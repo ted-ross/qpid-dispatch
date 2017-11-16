@@ -52,6 +52,7 @@ def parse_args(argv):
     parser.add_option("--linkroutes", help="Show Link Routes",              action="store_const", const="linkroutes", dest="show")
     parser.add_option("-v", "--verbose", help="Show maximum detail",        action="store_true", dest="verbose")
     parser.add_option("--log", help="Show recent log entries", action="store_const", const="log", dest="show")
+    parser.add_option("--mobile", help="Show only mobile addresses", action="store_true", dest="mobile")
 
     # This limit can be used to limit the number of output rows and can be used in conjunction with options
     # like -c, -l, -a, --autolinks, --linkroutes and --log.
@@ -302,7 +303,8 @@ class BusManager(Node):
             row.append(link.operStatus)
             if self.opts.verbose:
                 row.append(link.linkName)
-            rows.append(row)
+            if not self.opts.mobile or self._addr_class(link.owningAddr) == 'mobile':
+                rows.append(row)
         title = "Router Links"
         dispRows = rows
         disp.formattedTable(title, heads, dispRows)
@@ -393,7 +395,8 @@ class BusManager(Node):
             row.append(addr.deliveriesTransit)
             row.append(addr.deliveriesToContainer)
             row.append(addr.deliveriesFromContainer)
-            rows.append(row)
+            if not self.opts.mobile or self._addr_class(addr.name) == 'mobile':
+                rows.append(row)
         title = "Router Addresses"
         sorter = Sorter(heads, rows, 'addr', 0, True)
         dispRows = sorter.getSorted()
