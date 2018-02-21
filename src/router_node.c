@@ -36,6 +36,7 @@ const char *QD_ROUTER_LINK_TYPE = "router.link";
 
 static char *router_role    = "inter-router";
 static char *container_role = "route-container";
+static char *edge_role      = "edge-uplink";
 static char *direct_prefix;
 static char *node_id;
 
@@ -144,6 +145,8 @@ static void qd_router_connection_get_config(const qd_connection_t  *conn,
             *cost = cf->inter_router_cost;
         } else if (cf && (strcmp(cf->role, container_role) == 0))  // backward compat
             *role = QDR_ROLE_ROUTE_CONTAINER;
+        else if (cf && (strcmp(cf->role, edge_role) == 0))
+            *role = QDR_ROLE_EDGE_UPLINK;
         else
             *role = QDR_ROLE_NORMAL;
 
