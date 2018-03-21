@@ -436,6 +436,8 @@ class RouterNode(object):
         if self.peer_link_id == link_id:
             return False
         self.peer_link_id = link_id
+        if link_id == -1:
+            return False
         self.next_hop_router = None
         self.adapter.set_link(self.maskbit, link_id)
         self.adapter.remove_next_hop(self.maskbit)
@@ -579,5 +581,7 @@ class RouterNode(object):
         self.link_state.del_all_peers()
         self.unmap_all_addresses()
         self.log(LOG_INFO, "Detected Restart of Router Node %s" % self.id)
+        if self.peer_link_id == -1:
+            return False
         return True
 

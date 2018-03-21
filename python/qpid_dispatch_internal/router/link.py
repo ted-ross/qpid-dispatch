@@ -23,9 +23,12 @@ from ..dispatch import LOG_TRACE
 class LinkStateEngine(object):
     """
     This module is responsible for running the Link State protocol.
+    If this router is running in edge mode, the List State protocol is reduced to
+    simply sending periodic RA messages with the mobile-sequence.
     """
-    def __init__(self, container):
+    def __init__(self, container, edge_mode):
         self.container = container
+        self.edge_mode = edge_mode
         self.node_tracker = container.node_tracker
         self.id = self.container.id
         self.ra_interval_stable = self.container.config.raInterval
@@ -53,13 +56,13 @@ class LinkStateEngine(object):
 
 
     def handle_lsu(self, msg, now):
-        if msg.id == self.id:
+        if msg.id == self.id or self.edge_mode:
             return
         self.node_tracker.link_state_received(msg.id, msg.version, msg.ls, msg.instance, now)
 
 
     def handle_lsr(self, msg, now):
-        if msg.id == self.id:
+        if msg.id == self.id or self.edge_mode:
             return
         self.node_tracker.router_learned(msg.id, msg.version)
         my_ls = self.node_tracker.link_state
@@ -76,7 +79,7 @@ class LinkStateEngine(object):
 
     def send_ra(self, now):
         self.last_ra_time = now
-        ls_seq = self.node_tracker.link_state.ls_seq
+        ls_seq = 0 if self.edge_mode else self.node_tracker.link_state.ls_seq
         msg = MessageRA(None, self.id, ls_seq, self.mobile_seq, self.container.instance)
         self.container.send('amqp:/_topo/0/all/qdrouter', msg)
         self.container.log_ls(LOG_TRACE, "SENT: %r" % msg)
