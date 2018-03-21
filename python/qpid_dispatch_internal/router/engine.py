@@ -29,6 +29,7 @@ from .path import PathEngine
 from .mobile import MobileAddressEngine
 from .node import NodeTracker
 from .message import Message
+from .edgenode import NodeTrackerEdge
 
 from traceback import format_exc, extract_stack
 import time
@@ -44,7 +45,7 @@ class RouterEngine(object):
     """
     """
 
-    def __init__(self, router_adapter, router_id, area, max_routers, config_override={}):
+    def __init__(self, router_adapter, mode, router_id, area, max_routers, config_override={}):
         """
         Initialize an instance of a router for a domain.
         """
@@ -53,6 +54,7 @@ class RouterEngine(object):
         ##
         self.domain         = "domain"
         self.router_adapter = router_adapter
+        self.mode           = mode
         self._config        = None # Not yet loaded
         self._log_hello     = LogAdapter("ROUTER_HELLO")
         self._log_ls        = LogAdapter("ROUTER_LS")
@@ -67,17 +69,26 @@ class RouterEngine(object):
         self.id             = router_id
         self.instance       = int(time.time())
         self.area           = area
-        self.log(LOG_INFO, "Router Engine Instantiated: id=%s instance=%d max_routers=%d" %
-                 (self.id, self.instance, self.max_routers))
+        self.log(LOG_INFO, "Router Engine Instantiated: id=%s instance=%d max_routers=%d, mode=%s" %
+                 (self.id, self.instance, self.max_routers, self.mode))
 
         ##
-        ## Launch the sub-module engines
+        ## Launch the appropriate sub-module engines for the router mode
         ##
-        self.node_tracker          = NodeTracker(self, self.max_routers)
-        self.hello_protocol        = HelloProtocol(self, self.node_tracker)
-        self.link_state_engine     = LinkStateEngine(self)
-        self.path_engine           = PathEngine(self)
-        self.mobile_address_engine = MobileAddressEngine(self, self.node_tracker)
+        if self.mode == 'interior':
+            self.node_tracker          = NodeTracker(self, self.max_routers)
+            self.hello_protocol        = HelloProtocol(self, self.node_tracker)
+            self.link_state_engine     = LinkStateEngine(self, False)
+            self.path_engine           = PathEngine(self)
+            self.mobile_address_engine = MobileAddressEngine(self, self.node_tracker)
+        elif self.mode == 'edge':
+            self.node_tracker          = NodeTrackerEdge(self, self.max_routers)
+            self.hello_protocol        = HelloProtocol(self, self.node_tracker)
+            self.link_state_engine     = LinkStateEngine(self, True)
+            self.path_engine           = None
+            self.mobile_address_engine = MobileAddressEngine(self, self.node_tracker)
+        else:
+            raise Exception("Invalid router mode: %s" % self.mode)
 
 
     ##========================================================================================

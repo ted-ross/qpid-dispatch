@@ -41,6 +41,13 @@ typedef struct {
 } RouterAdapter;
 
 
+static bool qd_router_mode_ok(qd_router_t *router)
+{
+    return router->router_mode == QD_ROUTER_MODE_INTERIOR ||
+        router->router_mode == QD_ROUTER_MODE_EDGE;
+}
+
+
 static PyObject *qd_add_router(PyObject *self, PyObject *args)
 {
     RouterAdapter *adapter = (RouterAdapter*) self;
@@ -322,7 +329,7 @@ static void qd_router_mobile_added(void *context, const char *address_hash)
     PyObject    *pArgs;
     PyObject    *pValue;
 
-    if (pyAdded && router->router_mode == QD_ROUTER_MODE_INTERIOR) {
+    if (pyAdded && qd_router_mode_ok(router)) {
         qd_python_lock_state_t lock_state = qd_python_lock();
         pArgs = PyTuple_New(1);
         PyTuple_SetItem(pArgs, 0, PyUnicode_FromString(address_hash));
@@ -341,7 +348,7 @@ static void qd_router_mobile_removed(void *context, const char *address_hash)
     PyObject    *pArgs;
     PyObject    *pValue;
 
-    if (pyRemoved && router->router_mode == QD_ROUTER_MODE_INTERIOR) {
+    if (pyRemoved && qd_router_mode_ok(router)) {
         qd_python_lock_state_t lock_state = qd_python_lock();
         pArgs = PyTuple_New(1);
         PyTuple_SetItem(pArgs, 0, PyUnicode_FromString(address_hash));
@@ -360,7 +367,7 @@ static void qd_router_link_lost(void *context, int link_mask_bit)
     PyObject    *pArgs;
     PyObject    *pValue;
 
-    if (pyRemoved && router->router_mode == QD_ROUTER_MODE_INTERIOR) {
+    if (pyRemoved && qd_router_mode_ok(router)) {
         qd_python_lock_state_t lock_state = qd_python_lock();
         pArgs = PyTuple_New(1);
         PyTuple_SetItem(pArgs, 0, PyLong_FromLong((long) link_mask_bit));
@@ -388,7 +395,7 @@ qd_error_t qd_router_python_setup(qd_router_t *router)
     // If we are not operating as an interior router, don't start the
     // router module.
     //
-    if (router->router_mode != QD_ROUTER_MODE_INTERIOR)
+    if (!qd_router_mode_ok(router))
         return QD_ERROR_NONE;
 
     PyObject *pDispatchModule = qd_python_module();
@@ -423,22 +430,26 @@ qd_error_t qd_router_python_setup(qd_router_t *router)
     //
     // Constructor Arguments for RouterEngine
     //
-    pArgs = PyTuple_New(4);
+    pArgs = PyTuple_New(5);
 
     // arg 0: adapter instance
     PyTuple_SetItem(pArgs, 0, adapterInstance);
 
-    // arg 1: router_id
-    pId = PyUnicode_FromString(router->router_id);
+    // arg 1: mode
+    pId = PyUnicode_FromString(router->router_mode == QD_ROUTER_MODE_INTERIOR ? "interior" : "edge");
     PyTuple_SetItem(pArgs, 1, pId);
 
-    // arg 2: area_id
-    pArea = PyUnicode_FromString(router->router_area);
-    PyTuple_SetItem(pArgs, 2, pArea);
+    // arg 2: router_id
+    pId = PyUnicode_FromString(router->router_id);
+    PyTuple_SetItem(pArgs, 2, pId);
 
-    // arg 3: max_routers
+    // arg 3: area_id
+    pArea = PyUnicode_FromString(router->router_area);
+    PyTuple_SetItem(pArgs, 3, pArea);
+
+    // arg 4: max_routers
     pMaxRouters = PyLong_FromLong((long) qd_bitmask_width());
-    PyTuple_SetItem(pArgs, 3, pMaxRouters);
+    PyTuple_SetItem(pArgs, 4, pMaxRouters);
 
     //
     // Instantiate the router
@@ -468,7 +479,7 @@ qd_error_t qd_pyrouter_tick(qd_router_t *router)
     PyObject *pArgs;
     PyObject *pValue;
 
-    if (pyTick && router->router_mode == QD_ROUTER_MODE_INTERIOR) {
+    if (pyTick && qd_router_mode_ok(router)) {
         qd_python_lock_state_t lock_state = qd_python_lock();
         pArgs  = PyTuple_New(0);
         pValue = PyObject_CallObject(pyTick, pArgs);
