@@ -33,8 +33,8 @@ class NodeTrackerEdge(object):
         self.container        = container
         self.my_id            = container.id
         self.max_routers      = max_routers
-        self.neighbor_max_age = self.container.config.helloMaxAge
-        self.ls_max_age       = self.container.config.remoteLsMaxAge
+        self.neighbor_max_age = self.container.config.helloMaxAgeSeconds
+        self.ls_max_age       = self.container.config.remoteLsMaxAgeSeconds
         self.uplink           = None
         self.container.router_adapter.get_agent().add_implementation(self, "router.node")
 
