@@ -596,7 +596,10 @@ static void qdr_generate_temp_addr(qdr_core_t *core, char *buffer, size_t length
 {
     char discriminator[QDR_DISCRIMINATOR_SIZE];
     qdr_generate_discriminator(discriminator);
-    snprintf(buffer, length, "amqp:/_topo/%s/%s/temp.%s", core->router_area, core->router_id, discriminator);
+    if (core->router_mode == QD_ROUTER_MODE_EDGE)
+        snprintf(buffer, length, "amqp:/_edge/%s/temp.%s", core->router_id, discriminator);
+    else
+        snprintf(buffer, length, "amqp:/_topo/%s/%s/temp.%s", core->router_area, core->router_id, discriminator);
 }
 
 
