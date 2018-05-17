@@ -65,6 +65,8 @@ class NodeTrackerEdge(object):
 
     def tick(self, now):
         send_ra = False
+        if not self.uplink:
+            return
 
         ##
         ## Expire neighbors and link state
