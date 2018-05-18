@@ -1103,10 +1103,10 @@ qd_router_t *qd_router(qd_dispatch_t *qd, qd_router_mode_t mode, const char *are
     router->timer = qd_timer(qd, qd_router_timer_handler, (void*) router);
 
     //
-    // Inform the field iterator module of this router's id and area.  The field iterator
+    // Inform the field iterator module of this router's mode, id, and area.  The field iterator
     // uses this to offload some of the address-processing load from the router.
     //
-    qd_iterator_set_address(area, id);
+    qd_iterator_set_address(mode == QD_ROUTER_MODE_EDGE, area, id);
 
     //
     // Seed the random number generator
