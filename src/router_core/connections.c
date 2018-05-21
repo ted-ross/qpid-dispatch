@@ -1037,7 +1037,7 @@ void qdr_check_addr_CT(qdr_core_t *core, qdr_address_t *addr, bool was_local)
     //
     if (was_local && DEQ_SIZE(addr->rlinks) == 0) {
         const char *key = (const char*) qd_hash_key_by_handle(addr->hash_handle);
-        if (key && *key == 'M')
+        if (key && (*key == 'M' || *key == 'H'))
             qdr_post_mobile_removed_CT(core, key);
     }
 
@@ -1413,16 +1413,16 @@ static void qdr_attach_link_data_CT(qdr_core_t *core, qdr_connection_t *conn, qd
         } else if (core->router_mode == QD_ROUTER_MODE_INTERIOR) {
             //
             // This is a down-link to an edge router.  Create a mobile address of the form
-            // M0_edge/<edge-router-id>, associate the link to that address, and advertise
+            // H<edge-router-id>, associate the link to that address, and advertise
             // the address on the network.
             //
             const char    *edge_id = conn->connection_info->container;
-            qdr_address_t *addr    = qdr_add_mobile_address_CT(core, "_edge/", edge_id, QD_TREATMENT_ANYCAST_BALANCED);
+            qdr_address_t *addr    = qdr_add_mobile_address_CT(core, "", edge_id, QD_TREATMENT_ANYCAST_BALANCED, true);
             link->owning_addr = addr;
             qdr_add_link_ref(&addr->rlinks, link, QDR_LINK_LIST_CLASS_ADDRESS);
             if (DEQ_SIZE(addr->rlinks) == 1) {
                 const char *key = (const char*) qd_hash_key_by_handle(addr->hash_handle);
-                if (key && *key == 'M')
+                if (key && (*key == 'M' || *key == 'H'))
                     qdr_post_mobile_added_CT(core, key);
                 qdr_addr_start_inlinks_CT(core, addr);
             }

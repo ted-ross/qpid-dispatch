@@ -69,7 +69,7 @@ class RouterTest(TestCase):
 
         router('INT.A', 'interior', ('listener', {'role': 'inter-router', 'port': inter_router_port}),
                ('listener', {'role': 'edge-uplink', 'port': edge_port_A}))
-        router('INT.B', 'interior', ('connector', {'name': 'connectorToA', 'role': 'inter-router', 'port': inter_router_port, 'verifyHostName': 'no'}),
+        router('INT.B', 'interior', ('connector', {'name': 'connectorToA', 'role': 'inter-router', 'port': inter_router_port}),
                ('listener', {'role': 'edge-uplink', 'port': edge_port_B}))
         router('EA1',   'edge',     ('connector', {'name': 'uplink', 'role': 'edge-uplink', 'port': edge_port_A}))
         router('EA2',   'edge',     ('connector', {'name': 'uplink', 'role': 'edge-uplink', 'port': edge_port_A}))
@@ -105,6 +105,36 @@ class RouterTest(TestCase):
         test = ConnectivityTest(self.routers[1].addresses[0],
                                 self.routers[5].addresses[0],
                                 'EB2')
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_05_dynamic_address_same_edge(self):
+        test = DynamicAddressTest(self.routers[2].addresses[0],
+                                  self.routers[2].addresses[0])
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_06_dynamic_address_interior_to_edge(self):
+        test = DynamicAddressTest(self.routers[2].addresses[0],
+                                  self.routers[0].addresses[0])
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_07_dynamic_address_edge_to_interior(self):
+        test = DynamicAddressTest(self.routers[0].addresses[0],
+                                  self.routers[2].addresses[0])
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_08_dynamic_address_edge_to_edge_one_interior(self):
+        test = DynamicAddressTest(self.routers[2].addresses[0],
+                                  self.routers[3].addresses[0])
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_09_dynamic_address_edge_to_edge_two_interior(self):
+        test = DynamicAddressTest(self.routers[2].addresses[0],
+                                  self.routers[4].addresses[0])
         test.run()
         self.assertEqual(None, test.error)
 
@@ -210,6 +240,53 @@ class ConnectivityTest(MessagingHandler):
                 self.error = "Incorrect uplink count for container-id.  Expected 1, got %d" % count
             self.interior_conn.close()
             self.edge_conn.close()
+            self.timer.cancel()
+
+    def run(self):
+        Container(self).run()
+
+
+class DynamicAddressTest(MessagingHandler):
+    def __init__(self, receiver_host, sender_host):
+        super(DynamicAddressTest, self).__init__()
+        self.receiver_host = receiver_host
+        self.sender_host   = sender_host
+
+        self.receiver_conn = None
+        self.sender_conn   = None
+        self.receiver      = None
+        self.address       = None
+        self.count         = 10
+        self.n_rcvd        = 0
+        self.n_sent        = 0
+        self.error         = None
+
+    def timeout(self):
+        self.error = "Timeout Expired - n_sent=%d n_rcvd=%d addr=%s" % (self.n_sent, self.n_rcvd, self.address)
+        self.receiver_conn.close()
+        self.sender_conn.close()
+
+    def on_start(self, event):
+        self.timer         = event.reactor.schedule(5.0, Timeout(self))
+        self.receiver_conn = event.container.connect(self.receiver_host)
+        self.sender_conn   = event.container.connect(self.sender_host)
+        self.receiver      = event.container.create_receiver(self.receiver_conn, dynamic=True)
+
+    def on_link_opened(self, event):
+        if event.receiver == self.receiver:
+            self.address = self.receiver.remote_source.address
+            self.sender  = event.container.create_sender(self.sender_conn, self.address)
+
+    def on_sendable(self, event):
+        while self.n_sent < self.count:
+            self.sender.send(Message(body="Message %d" % self.n_sent))
+            self.n_sent += 1
+
+    def on_message(self, event):
+        self.n_rcvd += 1
+        if self.n_rcvd == self.count:
+            self.receiver_conn.close()
+            self.sender_conn.close()
             self.timer.cancel()
 
     def run(self):

@@ -138,15 +138,18 @@ static void qd_router_connection_get_config(const qd_connection_t  *conn,
         *strip_annotations_out = cf ? cf->strip_outbound_annotations : false;
         *link_capacity         = cf ? cf->link_capacity : 1;
 
-        if (cf && strcmp(cf->role, router_role) == 0) {
+        if (cf && (strcmp(cf->role, router_role) == 0)) {
             *strip_annotations_in  = false;
             *strip_annotations_out = false;
             *role = QDR_ROLE_INTER_ROUTER;
             *cost = cf->inter_router_cost;
+        } else if (cf && (strcmp(cf->role, edge_role) == 0)) {
+            *strip_annotations_in  = false;
+            *strip_annotations_out = false;
+            *role = QDR_ROLE_EDGE_UPLINK;
+            *cost = cf->inter_router_cost;
         } else if (cf && (strcmp(cf->role, container_role) == 0))  // backward compat
             *role = QDR_ROLE_ROUTE_CONTAINER;
-        else if (cf && (strcmp(cf->role, edge_role) == 0))
-            *role = QDR_ROLE_EDGE_UPLINK;
         else
             *role = QDR_ROLE_NORMAL;
 
@@ -179,14 +182,15 @@ static qd_iterator_t *router_annotate_message(qd_router_t   *router,
                                               int           *ingress_index)
 {
     qd_iterator_t *ingress_iter = 0;
+    bool           edge_mode    = router->router_mode == QD_ROUTER_MODE_EDGE;
+
+    *link_exclusions = 0;
+    *distance        = 0;
 
     qd_parsed_field_t *trace   = qd_message_get_trace(msg);
     qd_parsed_field_t *ingress = qd_message_get_ingress(msg);
     qd_parsed_field_t *to      = qd_message_get_to_override(msg);
     qd_parsed_field_t *phase   = qd_message_get_phase(msg);
-
-    *link_exclusions = 0;
-    *distance        = 0;
 
     //
     // QD_MA_TRACE:
@@ -194,40 +198,44 @@ static qd_iterator_t *router_annotate_message(qd_router_t   *router,
     // If the router ID is already in the trace the msg has looped.
     // This code does not check for the loop condition.
     //
-    qd_composed_field_t *trace_field = qd_compose_subfield(0);
-    qd_compose_start_list(trace_field);
-    if (trace) {
-        if (qd_parse_is_list(trace)) {
-            //
-            // Return the distance in hops that this delivery has traveled.
-            //
-            *distance = qd_parse_sub_count(trace);
+    // Edge routers do not add their IDs to the trace list.
+    //
+    if (!edge_mode) {
+        qd_composed_field_t *trace_field = qd_compose_subfield(0);
+        qd_compose_start_list(trace_field);
+        if (trace) {
+            if (qd_parse_is_list(trace)) {
+                //
+                // Return the distance in hops that this delivery has traveled.
+                //
+                *distance = qd_parse_sub_count(trace);
 
-            //
-            // Create a link-exclusion map for the items in the trace.  This map will
-            // contain a one-bit for each link that leads to a neighbor router that
-            // the message has already passed through.
-            //
-            *link_exclusions = qd_tracemask_create(router->tracemask, trace, ingress_index);
+                //
+                // Create a link-exclusion map for the items in the trace.  This map will
+                // contain a one-bit for each link that leads to a neighbor router that
+                // the message has already passed through.
+                //
+                *link_exclusions = qd_tracemask_create(router->tracemask, trace, ingress_index);
 
-            //
-            // Append this router's ID to the trace.
-            //
-            uint32_t idx = 0;
-            qd_parsed_field_t *trace_item = qd_parse_sub_value(trace, idx);
-            while (trace_item) {
-                qd_iterator_t *iter = qd_parse_raw(trace_item);
-                qd_iterator_reset_view(iter, ITER_VIEW_ALL);
-                qd_compose_insert_string_iterator(trace_field, iter);
-                idx++;
-                trace_item = qd_parse_sub_value(trace, idx);
+                //
+                // Append this router's ID to the trace.
+                //
+                uint32_t idx = 0;
+                qd_parsed_field_t *trace_item = qd_parse_sub_value(trace, idx);
+                while (trace_item) {
+                    qd_iterator_t *iter = qd_parse_raw(trace_item);
+                    qd_iterator_reset_view(iter, ITER_VIEW_ALL);
+                    qd_compose_insert_string_iterator(trace_field, iter);
+                    idx++;
+                    trace_item = qd_parse_sub_value(trace, idx);
+                }
             }
         }
-    }
 
-    qd_compose_insert_string(trace_field, node_id);
-    qd_compose_end_list(trace_field);
-    qd_message_set_trace_annotation(msg, trace_field);
+        qd_compose_insert_string(trace_field, node_id);
+        qd_compose_end_list(trace_field);
+        qd_message_set_trace_annotation(msg, trace_field);
+    }
 
     //
     // QD_MA_TO:
@@ -252,13 +260,17 @@ static qd_iterator_t *router_annotate_message(qd_router_t   *router,
     // If there is no ingress field, annotate the ingress as
     // this router else keep the original field.
     //
-    qd_composed_field_t *ingress_field = qd_compose_subfield(0);
-    if (ingress && qd_parse_is_scalar(ingress)) {
-        ingress_iter = qd_parse_raw(ingress);
-        qd_compose_insert_string_iterator(ingress_field, ingress_iter);
-    } else
-        qd_compose_insert_string(ingress_field, node_id);
-    qd_message_set_ingress_annotation(msg, ingress_field);
+    // Edge routers do not annotate the ingress field.
+    //
+    if (!edge_mode) {
+        qd_composed_field_t *ingress_field = qd_compose_subfield(0);
+        if (ingress && qd_parse_is_scalar(ingress)) {
+            ingress_iter = qd_parse_raw(ingress);
+            qd_compose_insert_string_iterator(ingress_field, ingress_iter);
+        } else
+            qd_compose_insert_string(ingress_field, node_id);
+        qd_message_set_ingress_annotation(msg, ingress_field);
+    }
 
     //
     // Return the iterator to the ingress field _if_ it was present.
@@ -798,7 +810,7 @@ static void AMQP_opened_handler(qd_router_t *router, qd_connection_t *conn, bool
 
     pn_data_t *props = pn_conn ? pn_connection_remote_properties(pn_conn) : 0;
 
-    if (role == QDR_ROLE_INTER_ROUTER) {
+    if (role == QDR_ROLE_INTER_ROUTER || role == QDR_ROLE_EDGE_UPLINK) {
         //
         // Check the remote properties for an inter-router cost value.
         //
