@@ -323,7 +323,7 @@ qdr_address_t *qdr_add_local_address_CT(qdr_core_t *core, char aclass, const cha
 }
 
 
-qdr_address_t *qdr_add_mobile_address_CT(qdr_core_t *core, const char *prefix, const char *address, qd_address_treatment_t treatment)
+qdr_address_t *qdr_add_mobile_address_CT(qdr_core_t *core, const char *prefix, const char *address, qd_address_treatment_t treatment, bool edge)
 {
     char           addr_string_stack[1000];
     char          *addr_string = addr_string_stack;
@@ -337,7 +337,7 @@ qdr_address_t *qdr_add_mobile_address_CT(qdr_core_t *core, const char *prefix, c
         addr_string = (char*) malloc(len);
     }
 
-    snprintf(addr_string, len, "M0%s%s", prefix, address);
+    snprintf(addr_string, len, "%s%s%s", edge ? "H" : "M0", prefix, address);
     iter = qd_iterator_string(addr_string, ITER_VIEW_ALL);
 
     qd_hash_retrieve(core->addr_hash, iter, (void**) &addr);
