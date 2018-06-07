@@ -65,7 +65,7 @@ void qdr_core_free(qdr_core_t *core);
  */
 void qdr_core_add_router(qdr_core_t *core, const char *address, int router_maskbit);
 void qdr_core_del_router(qdr_core_t *core, int router_maskbit);
-void qdr_core_set_link(qdr_core_t *core, int router_maskbit, int link_maskbit);
+void qdr_core_set_link(qdr_core_t *core, int router_maskbit, const char *link_id);
 void qdr_core_remove_link(qdr_core_t *core, int router_maskbit);
 void qdr_core_set_next_hop(qdr_core_t *core, int router_maskbit, int nh_router_maskbit);
 void qdr_core_remove_next_hop(qdr_core_t *core, int router_maskbit);
@@ -76,7 +76,7 @@ void qdr_core_unmap_destination(qdr_core_t *core, int router_maskbit, const char
 
 typedef void (*qdr_mobile_added_t)   (void *context, const char *address_hash);
 typedef void (*qdr_mobile_removed_t) (void *context, const char *address_hash);
-typedef void (*qdr_link_lost_t)      (void *context, int link_maskbit);
+typedef void (*qdr_link_lost_t)      (void *context, const char *link_id);
 
 void qdr_core_route_table_handlers(qdr_core_t           *core, 
                                    void                 *context,
@@ -89,7 +89,7 @@ void qdr_core_route_table_handlers(qdr_core_t           *core,
  * In-process messaging functions
  ******************************************************************************
  */
-typedef void (*qdr_receive_t) (void *context, qd_message_t *msg, int link_maskbit, int inter_router_cost);
+typedef void (*qdr_receive_t) (void *context, qd_message_t *msg, const char *link_id, int link_maskbit, int inter_router_cost);
 
 qdr_subscription_t *qdr_core_subscribe(qdr_core_t             *core,
                                        const char             *address,

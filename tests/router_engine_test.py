@@ -146,7 +146,7 @@ class NeighborTest(unittest.TestCase):
     def send(self, dest, msg):
         self.sent.append((dest, msg))
 
-    def neighbor_refresh(self, node_id, ProtocolVersion, instance, link_id, cost, now):
+    def neighbor_refresh(self, node_id, ProtocolVersion, instance, peer_is_edge, link_id, link_maskbit, cost, now):
         self.neighbors[node_id] = (instance, link_id, cost, now)
 
     def setUp(self):
@@ -154,6 +154,7 @@ class NeighborTest(unittest.TestCase):
         self.neighbors = {}
         self.id = "R1"
         self.instance = 0
+        self.mode = 'interior'
         # Fake configuration
         self.config = EntityBase({
             'helloIntervalSeconds'    :  1.0,
@@ -179,7 +180,7 @@ class NeighborTest(unittest.TestCase):
         self.sent = []
         self.neighbors = {}
         self.engine = HelloProtocol(self, self)
-        self.engine.handle_hello(MessageHELLO(None, 'R2', []), 2.0, 0, 1)
+        self.engine.handle_hello(MessageHELLO(None, 'R2', []), 2.0, 'X', 0, 1)
         self.engine.tick(5.0)
         self.assertEqual(len(self.sent), 1)
         dest, msg = self.sent.pop(0)
@@ -189,7 +190,7 @@ class NeighborTest(unittest.TestCase):
         self.sent = []
         self.neighbors = {}
         self.engine = HelloProtocol(self, self)
-        self.engine.handle_hello(MessageHELLO(None, 'R2', ['R1']), 0.5, 0, 1)
+        self.engine.handle_hello(MessageHELLO(None, 'R2', ['R1']), 0.5, 'X', 0, 1)
         self.engine.tick(1.0)
         self.engine.tick(2.0)
         self.engine.tick(3.0)
@@ -200,13 +201,13 @@ class NeighborTest(unittest.TestCase):
         self.sent = []
         self.neighbors = {}
         self.engine = HelloProtocol(self, self)
-        self.engine.handle_hello(MessageHELLO(None, 'R2', ['R1']), 0.5, 0, 1)
+        self.engine.handle_hello(MessageHELLO(None, 'R2', ['R1']), 0.5, 'X', 0, 1)
         self.engine.tick(1.0)
-        self.engine.handle_hello(MessageHELLO(None, 'R3', ['R1', 'R2']), 1.5, 0, 1)
+        self.engine.handle_hello(MessageHELLO(None, 'R3', ['R1', 'R2']), 1.5, 'X', 0, 1)
         self.engine.tick(2.0)
-        self.engine.handle_hello(MessageHELLO(None, 'R4', ['R1']), 2.5, 0, 1)
-        self.engine.handle_hello(MessageHELLO(None, 'R5', ['R2']), 2.5, 0, 1)
-        self.engine.handle_hello(MessageHELLO(None, 'R6', ['R1']), 2.5, 0, 1)
+        self.engine.handle_hello(MessageHELLO(None, 'R4', ['R1']), 2.5, 'X', 0, 1)
+        self.engine.handle_hello(MessageHELLO(None, 'R5', ['R2']), 2.5, 'X', 0, 1)
+        self.engine.handle_hello(MessageHELLO(None, 'R6', ['R1']), 2.5, 'X', 0, 1)
         self.engine.tick(3.0)
         keys = [k for k in self.neighbors.keys()]
         keys.sort()

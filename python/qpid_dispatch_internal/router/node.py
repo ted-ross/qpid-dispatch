@@ -36,10 +36,11 @@ class NodeTracker(object):
     This module is also responsible for assigning a unique mask bit value to each router.
     The mask bit is used in the main router to represent sets of valid destinations for addresses.
     """
-    def __init__(self, container, max_routers):
+    def __init__(self, container, max_routers, edge_mode):
         self.container             = container
         self.my_id                 = container.id
         self.max_routers           = max_routers
+        self.edge_mode             = edge_mode
         self.link_state            = LinkState(None, self.my_id, 0, {})
         self.link_state_changed    = False
         self.recompute_topology    = False
@@ -155,7 +156,8 @@ class NodeTracker(object):
             self.recompute_topology = False
             collection = {self.my_id : self.link_state}
             for node_id, node in self.nodes.items():
-                collection[node_id] = node.link_state
+                if not node.is_edge:
+                    collection[node_id] = node.link_state
             next_hops, costs, valid_origins, radius = self.container.path_engine.calculate_routes(collection)
             self.container.log_ls(LOG_INFO, "Computed next hops: %r" % next_hops)
             self.container.log_ls(LOG_INFO, "Computed costs: %r" % costs)
@@ -203,7 +205,7 @@ class NodeTracker(object):
             self.container.link_state_engine.send_ra(now)
 
 
-    def neighbor_refresh(self, node_id, version, instance, link_id, cost, now):
+    def neighbor_refresh(self, node_id, version, instance, is_edge, link_id, link_maskbit, cost, now):
         """
         Invoked when the hello protocol has received positive confirmation
         of continued bi-directional connectivity with a neighbor router.
@@ -213,7 +215,7 @@ class NodeTracker(object):
         ## If the node id is not known, create a new RouterNode to track it.
         ##
         if node_id not in self.nodes:
-            self.nodes[node_id] = RouterNode(self, node_id, version, instance)
+            self.nodes[node_id] = RouterNode(self, node_id, version, instance, is_edge)
         node = self.nodes[node_id]
 
         ##
@@ -226,7 +228,7 @@ class NodeTracker(object):
         ## Set the link_id to indicate this is a neighbor router.  If the link_id
         ## changed, update the index and add the neighbor to the local link state.
         ##
-        if node.set_link_id(link_id):
+        if node.set_link_id(link_id, link_maskbit):
             self.nodes_by_link_id[link_id] = node
             node.request_link_state()
             if self.link_state.add_peer(node_id, cost):
@@ -250,7 +252,7 @@ class NodeTracker(object):
         """
         Invoked when an inter-router link is dropped.
         """
-        self.container.log_ls(LOG_INFO, "Link to Neighbor Router Lost - link_tag=%d" % link_id)
+        self.container.log_ls(LOG_INFO, "Link to Neighbor Router Lost - link_tag=%s" % link_id)
         node_id = self.link_id_to_node_id(link_id)
         if node_id:
             self.nodes_by_link_id.pop(link_id)
@@ -276,7 +278,7 @@ class NodeTracker(object):
         ## If the node id is not known, create a new RouterNode to track it.
         ##
         if node_id not in self.nodes:
-            self.nodes[node_id] = RouterNode(self, node_id, version, instance)
+            self.nodes[node_id] = RouterNode(self, node_id, version, instance, False)
         node = self.nodes[node_id]
 
         ##
@@ -318,7 +320,7 @@ class NodeTracker(object):
         Invoked when we learn about another router by any means
         """
         if node_id not in self.nodes and node_id != self.my_id:
-            self.nodes[node_id] = RouterNode(self, node_id, version, None)
+            self.nodes[node_id] = RouterNode(self, node_id, version, None, False)
 
 
     def link_state_received(self, node_id, version, link_state, instance, now):
@@ -329,7 +331,7 @@ class NodeTracker(object):
         ## If the node id is not known, create a new RouterNode to track it.
         ##
         if node_id not in self.nodes:
-            self.nodes[node_id] = RouterNode(self, node_id, version, instance)
+            self.nodes[node_id] = RouterNode(self, node_id, version, instance, False)
         node = self.nodes[node_id]
 
         ##
@@ -392,16 +394,17 @@ class RouterNode(object):
     RouterNode is used to track remote routers in the router network.
     """
 
-    def __init__(self, parent, node_id, version, instance):
+    def __init__(self, parent, node_id, version, instance, is_edge):
         self.parent                  = parent
         self.adapter                 = parent.container.router_adapter
         self.log                     = parent.container.log
         self.id                      = node_id
         self.version                 = version
         self.instance                = instance
-        self.maskbit                 = self.parent._allocate_maskbit()
+        self.is_edge                 = is_edge
         self.neighbor_refresh_time   = 0.0
         self.peer_link_id            = None
+        self.peer_link_maskbit       = -1
         self.link_state              = LinkState(None, self.id, 0, {})
         self.next_hop_router         = None
         self.cost                    = None
@@ -411,7 +414,9 @@ class RouterNode(object):
         self.need_ls_request         = True
         self.need_mobile_request     = False
         self.keep_alive_count        = 0
-        self.adapter.add_router("amqp:/_topo/0/%s/qdrouter" % self.id, self.maskbit)
+        self.maskbit                 = -1 if is_edge else self.parent._allocate_maskbit()
+        self.address_hash            = "%c%s" % ('H' if is_edge else 'R', self.id)
+        self.adapter.add_router(self.address_hash, self.maskbit)
         self.log(LOG_TRACE, "Node %s created: maskbit=%d" % (self.id, self.maskbit))
         self.adapter.get_agent().add_implementation(self, "router.node")
 
@@ -439,14 +444,15 @@ class RouterNode(object):
         return "%s;class=%c" % (addr[1:], cls)
 
 
-    def set_link_id(self, link_id):
+    def set_link_id(self, link_id, link_maskbit):
         if self.peer_link_id == link_id:
             return False
-        self.peer_link_id = link_id
+        self.peer_link_id      = link_id
+        self.peer_link_maskbit = link_maskbit
         if link_id == -1:
             return False
         self.next_hop_router = None
-        self.adapter.set_link(self.maskbit, link_id)
+        self.adapter.set_link(self.maskbit, link_id, link_maskbit)
         self.adapter.remove_next_hop(self.maskbit)
         self.log(LOG_TRACE, "Node %s link set: link_id=%r (removed next hop)" % (self.id, link_id))
         return True

@@ -87,7 +87,6 @@ qdr_connection_t *qdr_connection_opened(qdr_core_t            *core,
     conn->strip_annotations_in  = strip_annotations_in;
     conn->strip_annotations_out = strip_annotations_out;
     conn->link_capacity         = link_capacity;
-    conn->mask_bit              = -1;
     DEQ_INIT(conn->links);
     DEQ_INIT(conn->work_list);
     conn->connection_info->role = conn->role;
@@ -626,6 +625,17 @@ static void qdr_generate_link_name(const char *label, char *buffer, size_t lengt
 }
 
 
+/**
+ * Generate a link set id
+ */
+static void qdr_generate_link_set_id(char *buffer, size_t length)
+{
+    char discriminator[QDR_DISCRIMINATOR_SIZE];
+    qdr_generate_discriminator(discriminator);
+    snprintf(buffer, length, "%c%s", QD_ITER_HASH_PREFIX_LINK_ID, discriminator);
+}
+
+
 static void qdr_link_cleanup_deliveries_CT(qdr_core_t *core, qdr_connection_t *conn, qdr_link_t *link)
 {
     //
@@ -798,13 +808,13 @@ static void qdr_link_cleanup_CT(qdr_core_t *core, qdr_connection_t *conn, qdr_li
 
     //
     // If this link is involved in inter-router communication, remove its reference
-    // from the core mask-bit tables
+    // from the connection's link-set
     //
-    if (qd_bitmask_valid_bit_value(conn->mask_bit)) {
-        if (link->link_type == QD_LINK_CONTROL)
-            core->control_links_by_mask_bit[conn->mask_bit] = 0;
-        if (link->link_type == QD_LINK_ROUTER)
-            core->data_links_by_mask_bit[conn->mask_bit] = 0;
+    if (conn->link_set) {
+        if (conn->link_set->control_link == link)
+            conn->link_set->control_link = 0;
+        if (conn->link_set->data_link == link)
+            conn->link_set->data_link = 0;
     }
 
     //
@@ -1229,20 +1239,41 @@ static void qdr_connection_opened_CT(qdr_core_t *core, qdr_action_t *action, boo
         }
 
         if (conn->role == QDR_ROLE_INTER_ROUTER || conn->role == QDR_ROLE_EDGE_UPLINK) {
-            if (conn->role == QDR_ROLE_INTER_ROUTER) {
-                //
-                // Assign a unique mask-bit to this connection as a reference to be used by
-                // the router module
-                //
-                if (qd_bitmask_first_set(core->neighbor_free_mask, &conn->mask_bit))
-                    qd_bitmask_clear_bit(core->neighbor_free_mask, conn->mask_bit);
-                else {
-                    qd_log(core->log, QD_LOG_CRITICAL, "Exceeded maximum inter-router connection count");
-                    conn->role = QDR_ROLE_NORMAL;
-                    qdr_field_free(action->args.connection.connection_label);
-                    qdr_field_free(action->args.connection.container_id);
-                    return;
+            //
+            // Allocate a link_set for this inter-router connection with a unique hashable identifier
+            // to be used in coordination with the router-module.
+            //
+            char link_id[100];
+            bool generating = true;
+
+            while (generating) {
+                qdr_generate_link_set_id(link_id, 100);
+                qd_iterator_t *link_id_iter = qd_iterator_string(link_id, ITER_VIEW_ALL);
+                qd_hash_retrieve(core->addr_hash, link_id_iter, (void**) &conn->link_set);
+                if (!conn->link_set) {
+                    conn->link_set = new_qdr_link_set_t();
+                    ZERO(conn->link_set);
+                    conn->link_set->mask_bit = -1;
+                    qd_hash_insert(core->addr_hash, link_id_iter, conn->link_set, &conn->link_set->hash_handle);
+                    generating = false;
+                    if (conn->role == QDR_ROLE_INTER_ROUTER) {
+                        //
+                        // Assign a unique mask-bit to this connection to be used for interior network
+                        // loop prevention.
+                        //
+                        if (qd_bitmask_first_set(core->neighbor_free_mask, &conn->link_set->mask_bit))
+                            qd_bitmask_clear_bit(core->neighbor_free_mask, conn->link_set->mask_bit);
+                        else {
+                            qd_log(core->log, QD_LOG_CRITICAL, "Exceeded maximum inter-router connection count");
+                            conn->role = QDR_ROLE_NORMAL;
+                            qdr_field_free(action->args.connection.connection_label);
+                            qdr_field_free(action->args.connection.container_id);
+                            qd_iterator_free(link_id_iter);
+                            return;
+                        }
+                    }
                 }
+                qd_iterator_free(link_id_iter);
             }
 
             if (!conn->incoming) {
@@ -1300,10 +1331,17 @@ static void qdr_connection_closed_CT(qdr_core_t *core, qdr_action_t *action, boo
     qdr_route_connection_closed_CT(core, conn);
 
     //
-    // Give back the router mask-bit.
+    // Free the link_set if there is one
     //
-    if (conn->role == QDR_ROLE_INTER_ROUTER)
-        qd_bitmask_set_bit(core->neighbor_free_mask, conn->mask_bit);
+    if (conn->link_set) {
+        if (conn->link_set->hash_handle) {
+            qd_hash_remove_by_handle(core->addr_hash, conn->link_set->hash_handle);
+            qd_hash_handle_free(conn->link_set->hash_handle);
+        }
+        if (conn->link_set->mask_bit >= 0)
+            qd_bitmask_set_bit(core->neighbor_free_mask, conn->link_set->mask_bit);
+        free_qdr_link_set_t(conn->link_set);
+    }
 
     //
     // Remove the references in the links_with_work list
@@ -1372,26 +1410,24 @@ static char* disambiguated_link_name(qdr_connection_info_t *conn, char *original
 //
 // Handle the attachment and detachment of an inter-router control link
 //
-static void qdr_attach_link_control_CT(qdr_core_t *core, qdr_connection_t *conn, qdr_link_t *link)
+static void qdr_attach_out_link_control_CT(qdr_core_t *core, qdr_connection_t *conn, qdr_link_t *link)
 {
     if (conn->role == QDR_ROLE_INTER_ROUTER || conn->role == QDR_ROLE_EDGE_UPLINK) {
         link->owning_addr = core->hello_addr;
         qdr_add_link_ref(&core->hello_addr->rlinks, link, QDR_LINK_LIST_CLASS_ADDRESS);
+        conn->link_set->control_link = link;
     }
-
-    if (conn->role == QDR_ROLE_INTER_ROUTER)
-        core->control_links_by_mask_bit[conn->mask_bit] = link;
 }
 
 
-static void qdr_detach_link_control_CT(qdr_core_t *core, qdr_connection_t *conn, qdr_link_t *link)
+static void qdr_detach_out_link_control_CT(qdr_core_t *core, qdr_connection_t *conn, qdr_link_t *link)
 {
     if (conn->role == QDR_ROLE_INTER_ROUTER || conn->role == QDR_ROLE_EDGE_UPLINK)
         qdr_del_link_ref(&core->hello_addr->rlinks, link, QDR_LINK_LIST_CLASS_ADDRESS);
 
-    if (conn->role == QDR_ROLE_INTER_ROUTER) {
-        core->control_links_by_mask_bit[conn->mask_bit] = 0;
-        qdr_post_link_lost_CT(core, conn->mask_bit);
+    if (conn->role == QDR_ROLE_INTER_ROUTER && conn->link_set && conn->link_set->hash_handle) {
+        const char *id = (const char*) qd_hash_key_by_handle(conn->link_set->hash_handle);
+        qdr_post_link_lost_CT(core, id);
     }
 }
 
@@ -1399,12 +1435,12 @@ static void qdr_detach_link_control_CT(qdr_core_t *core, qdr_connection_t *conn,
 //
 // Handle the attachment and detachment of an inter-router data link
 //
-static void qdr_attach_link_data_CT(qdr_core_t *core, qdr_connection_t *conn, qdr_link_t *link)
+static void qdr_attach_out_link_data_CT(qdr_core_t *core, qdr_connection_t *conn, qdr_link_t *link)
 {
-    if (conn->role == QDR_ROLE_INTER_ROUTER)
-        core->data_links_by_mask_bit[conn->mask_bit] = link;
+    if ((conn->role == QDR_ROLE_INTER_ROUTER || conn->role == QDR_ROLE_EDGE_UPLINK) && conn->link_set)
+        conn->link_set->data_link = link;
 
-    else if (conn->role == QDR_ROLE_EDGE_UPLINK) {
+    if (conn->role == QDR_ROLE_EDGE_UPLINK) {
         if (core->router_mode == QD_ROUTER_MODE_EDGE) {
             //
             // Associate this link with the uplink address.
@@ -1435,12 +1471,12 @@ static void qdr_attach_link_data_CT(qdr_core_t *core, qdr_connection_t *conn, qd
 }
 
 
-static void qdr_detach_link_data_CT(qdr_core_t *core, qdr_connection_t *conn, qdr_link_t *link)
+static void qdr_detach_out_link_data_CT(qdr_core_t *core, qdr_connection_t *conn, qdr_link_t *link)
 {
-    if (conn->role == QDR_ROLE_INTER_ROUTER)
-        core->data_links_by_mask_bit[conn->mask_bit] = 0;
+    if ((conn->role == QDR_ROLE_INTER_ROUTER || conn->role == QDR_ROLE_EDGE_UPLINK) && conn->link_set && conn->link_set->data_link == link)
+        conn->link_set->data_link = 0;
 
-    else if (conn->role == QDR_ROLE_EDGE_UPLINK) {
+    if (conn->role == QDR_ROLE_EDGE_UPLINK) {
         if (core->router_mode == QD_ROUTER_MODE_EDGE) {
             qdr_del_link_ref(&core->uplink_addr->rlinks, link, QDR_LINK_LIST_CLASS_ADDRESS);
             qd_log(core->log, QD_LOG_INFO, "Edge-uplink lost");
@@ -1489,8 +1525,9 @@ static void qdr_link_inbound_first_attach_CT(qdr_core_t *core, qdr_action_t *act
     //
     // EDGE_TODO: Prevent endpoint links on edge-uplink connections
     //
-    if (conn->role == QDR_ROLE_INTER_ROUTER && link->link_type == QD_LINK_ENDPOINT &&
-        core->control_links_by_mask_bit[conn->mask_bit] == 0) {
+    if ((conn->role == QDR_ROLE_INTER_ROUTER || conn->role == QDR_ROLE_EDGE_UPLINK) &&
+        link->link_type == QD_LINK_ENDPOINT &&
+        conn->link_set && conn->link_set->control_link == 0) {
         qdr_link_outbound_detach_CT(core, link, 0, QDR_CONDITION_WRONG_ROLE, true);
         qdr_terminus_free(source);
         qdr_terminus_free(target);
@@ -1664,12 +1701,12 @@ static void qdr_link_inbound_first_attach_CT(qdr_core_t *core, qdr_action_t *act
         }
 
         case QD_LINK_CONTROL:
-            qdr_attach_link_control_CT(core, conn, link);
+            qdr_attach_out_link_control_CT(core, conn, link);
             qdr_link_outbound_second_attach_CT(core, link, source, target);
             break;
 
         case QD_LINK_ROUTER:
-            qdr_attach_link_data_CT(core, conn, link);
+            qdr_attach_out_link_data_CT(core, conn, link);
             qdr_link_outbound_second_attach_CT(core, link, source, target);
             break;
         }
@@ -1754,11 +1791,11 @@ static void qdr_link_inbound_second_attach_CT(qdr_core_t *core, qdr_action_t *ac
             break;
 
         case QD_LINK_CONTROL:
-            qdr_attach_link_control_CT(core, conn, link);
+            qdr_attach_out_link_control_CT(core, conn, link);
             break;
 
         case QD_LINK_ROUTER:
-            qdr_attach_link_data_CT(core, conn, link);
+            qdr_attach_out_link_data_CT(core, conn, link);
             break;
         }
     }
@@ -1863,11 +1900,11 @@ static void qdr_link_inbound_detach_CT(qdr_core_t *core, qdr_action_t *action, b
             break;
 
         case QD_LINK_CONTROL:
-            qdr_detach_link_control_CT(core, conn, link);
+            qdr_detach_out_link_control_CT(core, conn, link);
             break;
 
         case QD_LINK_ROUTER:
-            qdr_detach_link_data_CT(core, conn, link);
+            qdr_detach_out_link_data_CT(core, conn, link);
             break;
         }
     }

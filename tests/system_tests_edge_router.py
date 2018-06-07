@@ -114,27 +114,88 @@ class RouterTest(TestCase):
         test.run()
         self.assertEqual(None, test.error)
 
-    def test_06_dynamic_address_interior_to_edge(self):
+    def test_06_dynamic_address_int_edge(self):
         test = DynamicAddressTest(self.routers[2].addresses[0],
                                   self.routers[0].addresses[0])
         test.run()
         self.assertEqual(None, test.error)
 
-    def test_07_dynamic_address_edge_to_interior(self):
+    def test_07_dynamic_address_int_int_edge(self):
+        test = DynamicAddressTest(self.routers[2].addresses[0],
+                                  self.routers[1].addresses[0])
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_08_dynamic_address_edge_int(self):
         test = DynamicAddressTest(self.routers[0].addresses[0],
                                   self.routers[2].addresses[0])
         test.run()
         self.assertEqual(None, test.error)
 
-    def test_08_dynamic_address_edge_to_edge_one_interior(self):
+    def test_09_dynamic_address_edge_int_int(self):
+        test = DynamicAddressTest(self.routers[1].addresses[0],
+                                  self.routers[2].addresses[0])
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_10_dynamic_address_edge_int_edge(self):
         test = DynamicAddressTest(self.routers[2].addresses[0],
                                   self.routers[3].addresses[0])
         test.run()
         self.assertEqual(None, test.error)
 
-    def test_09_dynamic_address_edge_to_edge_two_interior(self):
+    def test_11_dynamic_address_edge_int_int_edge(self):
         test = DynamicAddressTest(self.routers[2].addresses[0],
                                   self.routers[4].addresses[0])
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_12_one_mobile_receiver_same_edge(self):
+        test = MobileUnicastTest(self.routers[2].addresses[0],
+                                 self.routers[2].addresses[0],
+                                 "test_12")
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_13_one_mobile_receiver_int_edge(self):
+        test = MobileUnicastTest(self.routers[2].addresses[0],
+                                 self.routers[0].addresses[0],
+                                 "test_13")
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_14_one_mobile_receiver_int_int_edge(self):
+        test = MobileUnicastTest(self.routers[2].addresses[0],
+                                 self.routers[1].addresses[0],
+                                 "test_14")
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_15_one_mobile_receiver_edge_int(self):
+        test = MobileUnicastTest(self.routers[0].addresses[0],
+                                 self.routers[2].addresses[0],
+                                 "test_15")
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_16_one_mobile_receiver_edge_int_int(self):
+        test = MobileUnicastTest(self.routers[1].addresses[0],
+                                 self.routers[2].addresses[0],
+                                 "test_16")
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_17_one_mobile_receiver_edge_int_edge(self):
+        test = MobileUnicastTest(self.routers[2].addresses[0],
+                                 self.routers[3].addresses[0],
+                                 "test_17")
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_18_one_mobile_receiver_edge_int_int_edge(self):
+        test = MobileUnicastTest(self.routers[2].addresses[0],
+                                 self.routers[4].addresses[0],
+                                 "test_18")
         test.run()
         self.assertEqual(None, test.error)
 
@@ -247,6 +308,11 @@ class ConnectivityTest(MessagingHandler):
 
 
 class DynamicAddressTest(MessagingHandler):
+    """
+    Create a receiver on the receiver-host with a dynamic source.
+    Create a sender on the sender-host with the address of the dynamic source.
+    Deliver a batch of messages from sender and verify they are all received on the receiver and accepted.
+    """
     def __init__(self, receiver_host, sender_host):
         super(DynamicAddressTest, self).__init__()
         self.receiver_host = receiver_host
@@ -259,10 +325,12 @@ class DynamicAddressTest(MessagingHandler):
         self.count         = 10
         self.n_rcvd        = 0
         self.n_sent        = 0
+        self.n_accepted    = 0
         self.error         = None
 
     def timeout(self):
-        self.error = "Timeout Expired - n_sent=%d n_rcvd=%d addr=%s" % (self.n_sent, self.n_rcvd, self.address)
+        self.error = "Timeout Expired - n_sent=%d n_rcvd=%d n_accepted=%daddr=%s" % \
+                     (self.n_sent, self.n_rcvd, self.n_accepted, self.address)
         self.receiver_conn.close()
         self.sender_conn.close()
 
@@ -284,7 +352,63 @@ class DynamicAddressTest(MessagingHandler):
 
     def on_message(self, event):
         self.n_rcvd += 1
-        if self.n_rcvd == self.count:
+
+    def on_accepted(self, event):
+        self.n_accepted += 1
+        if self.n_accepted == self.count:
+            self.receiver_conn.close()
+            self.sender_conn.close()
+            self.timer.cancel()
+
+    def run(self):
+        Container(self).run()
+
+
+class MobileUnicastTest(MessagingHandler):
+    """
+    Create a receiver on the receiver-host with the supplied address.
+    Create a sender on the sender-host with the supplied address.
+    Deliver a batch of messages from sender and verify they are all received on the receiver and accepted.
+    """
+    def __init__(self, receiver_host, sender_host, address):
+        super(MobileUnicastTest, self).__init__()
+        self.receiver_host = receiver_host
+        self.sender_host   = sender_host
+        self.address       = address
+
+        self.receiver_conn = None
+        self.sender_conn   = None
+        self.receiver      = None
+        self.count         = 10
+        self.n_rcvd        = 0
+        self.n_sent        = 0
+        self.n_accepted    = 0
+        self.error         = None
+
+    def timeout(self):
+        self.error = "Timeout Expired - n_sent=%d n_rcvd=%d n_accepted=%d addr=%s" % \
+                     (self.n_sent, self.n_rcvd, self.n_accepted, self.address)
+        self.receiver_conn.close()
+        self.sender_conn.close()
+
+    def on_start(self, event):
+        self.timer         = event.reactor.schedule(5.0, Timeout(self))
+        self.receiver_conn = event.container.connect(self.receiver_host)
+        self.sender_conn   = event.container.connect(self.sender_host)
+        self.receiver      = event.container.create_receiver(self.receiver_conn, self.address)
+        self.sender        = event.container.create_sender(self.sender_conn, self.address)
+
+    def on_sendable(self, event):
+        while self.n_sent < self.count:
+            self.sender.send(Message(body="Message %d" % self.n_sent))
+            self.n_sent += 1
+
+    def on_message(self, event):
+        self.n_rcvd += 1
+
+    def on_accepted(self, event):
+        self.n_accepted += 1
+        if self.n_accepted == self.count:
             self.receiver_conn.close()
             self.sender_conn.close()
             self.timer.cancel()
