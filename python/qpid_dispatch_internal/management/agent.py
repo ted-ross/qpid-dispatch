@@ -782,7 +782,7 @@ class Agent(object):
         except:
             self.log(LOG_ERROR, "Can't respond to %s: %s"%(request, format_exc()))
 
-    def receive(self, request, unused_link_id, unused_cost):
+    def receive(self, request, unused_link_id, unused_link_maskbit, unused_cost):
         """Called when a management request is received."""
         def error(e, trace):
             """Raise an error"""

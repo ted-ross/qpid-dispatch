@@ -29,6 +29,7 @@
 typedef struct qdr_address_t         qdr_address_t;
 typedef struct qdr_address_config_t  qdr_address_config_t;
 typedef struct qdr_node_t            qdr_node_t;
+typedef struct qdr_link_set_t        qdr_link_set_t;
 typedef struct qdr_router_ref_t      qdr_router_ref_t;
 typedef struct qdr_link_ref_t        qdr_link_ref_t;
 typedef struct qdr_forwarder_t       qdr_forwarder_t;
@@ -84,12 +85,12 @@ struct qdr_action_t {
         // Arguments for router control-plane actions
         //
         struct {
-            int           link_maskbit;
             int           router_maskbit;
             int           nh_router_maskbit;
             int           cost;
             qd_bitmask_t *router_set;
             qdr_field_t  *address;
+            qdr_field_t  *link_id;
         } route_table;
 
         //
@@ -170,7 +171,8 @@ struct qdr_general_work_t {
     DEQ_LINKS(qdr_general_work_t);
     qdr_general_work_handler_t  handler;
     qdr_field_t                *field;
-    int                         maskbit;
+    qdr_field_t                *link_id;
+    int                         link_maskbit;
     int                         inter_router_cost;
     qdr_receive_t               on_message;
     void                       *on_message_context;
@@ -270,7 +272,24 @@ struct qdr_query_t {
     qd_amqp_error_t          status;
 };
 
-DEQ_DECLARE(qdr_query_t, qdr_query_list_t); 
+DEQ_DECLARE(qdr_query_t, qdr_query_list_t);
+
+
+//
+// qdr_link_set_t
+//
+// This record type is used to contain all of the out-links in an inter-router connection.
+// Each record instance is owned by an instance of qdr_connection_t and is also indexed
+// by the address hash table.
+//
+struct qdr_link_set_t {
+    qd_hash_handle_t *hash_handle;   ///< Linkage back to the hash table entry
+    int               mask_bit;      ///< Mask bit for use in anti-loop exclusion sets
+    qdr_link_t       *control_link;  ///< Link for router control traffic
+    qdr_link_t       *data_link;     ///< Link for message-routed deliveries of all priorities
+};
+
+ALLOC_DECLARE(qdr_link_set_t);
 
 
 struct qdr_node_t {
@@ -278,7 +297,7 @@ struct qdr_node_t {
     qdr_address_t    *owning_addr;
     int               mask_bit;
     qdr_node_t       *next_hop;           ///< Next hop node _if_ this is not a neighbor node
-    int               link_mask_bit;      ///< Mask bit of inter-router connection if this is a neighbor node
+    qdr_link_set_t   *link_set;           ///< Link-set for the inter-router connection if this is a neighbor node
     uint32_t          ref_count;
     qd_bitmask_t     *valid_origins;
     int               cost;
@@ -288,9 +307,9 @@ ALLOC_DECLARE(qdr_node_t);
 DEQ_DECLARE(qdr_node_t, qdr_node_list_t);
 void qdr_router_node_free(qdr_core_t *core, qdr_node_t *rnode);
 
-#define PEER_CONTROL_LINK(c,n) ((n->link_mask_bit >= 0) ? (c)->control_links_by_mask_bit[n->link_mask_bit] : 0)
-#define PEER_DATA_LINK(c,n)    ((n->link_mask_bit >= 0) ? (c)->data_links_by_mask_bit[n->link_mask_bit] : 0)
-
+#define PEER_CONTROL_LINK(n) ((n->link_set) ? n->link_set->control_link : 0)
+#define PEER_DATA_LINK(n)    ((n->link_set) ? n->link_set->data_link : 0)
+#define EXCLUDE_PEER(n,ex)   ((ex && n->link_set && n->link_set->mask_bit >= 0) ? qd_bitmask_value(ex, n->link_set->mask_bit) : false)
 
 struct qdr_router_ref_t {
     DEQ_LINKS(qdr_router_ref_t);
@@ -365,7 +384,8 @@ void qdr_del_delivery_ref(qdr_delivery_ref_list_t *list, qdr_delivery_ref_t *ref
 #define QDR_LINK_LIST_CLASS_ADDRESS    0
 #define QDR_LINK_LIST_CLASS_WORK       1
 #define QDR_LINK_LIST_CLASS_CONNECTION 2
-#define QDR_LINK_LIST_CLASSES          3
+#define QDR_LINK_LIST_CLASS_FORWARD    3
+#define QDR_LINK_LIST_CLASSES          4
 
 typedef enum {
     QDR_LINK_OPER_UP,
@@ -549,7 +569,7 @@ struct qdr_connection_t {
     bool                        strip_annotations_in;
     bool                        strip_annotations_out;
     int                         link_capacity;
-    int                         mask_bit;
+    qdr_link_set_t             *link_set;
     qdr_connection_work_list_t  work_list;
     sys_mutex_t                *work_lock;
     qdr_link_ref_list_t         links;
@@ -702,8 +722,6 @@ struct qdr_core_t {
     qdr_node_list_t       routers;            ///< List of routers, in order of cost, from lowest to highest
     qd_bitmask_t         *neighbor_free_mask;
     qdr_node_t          **routers_by_mask_bit;
-    qdr_link_t          **control_links_by_mask_bit;
-    qdr_link_t          **data_links_by_mask_bit;
     uint64_t              cost_epoch;
 
     uint64_t              next_tag;
@@ -733,7 +751,7 @@ struct qdr_core_t {
 
 void *router_core_thread(void *arg);
 uint64_t qdr_identifier(qdr_core_t* core);
-void qdr_management_agent_on_message(void *context, qd_message_t *msg, int link_id, int cost);
+void qdr_management_agent_on_message(void *context, qd_message_t *msg, const char *link_id, int link_maskbit, int cost);
 void  qdr_route_table_setup_CT(qdr_core_t *core);
 void  qdr_agent_setup_CT(qdr_core_t *core);
 void  qdr_forwarder_setup_CT(qdr_core_t *core);
@@ -780,7 +798,7 @@ void qdr_agent_enqueue_response_CT(qdr_core_t *core, qdr_query_t *query);
 
 void qdr_post_mobile_added_CT(qdr_core_t *core, const char *address_hash);
 void qdr_post_mobile_removed_CT(qdr_core_t *core, const char *address_hash);
-void qdr_post_link_lost_CT(qdr_core_t *core, int link_maskbit);
+void qdr_post_link_lost_CT(qdr_core_t *core, const char *link_id);
 
 void qdr_post_general_work_CT(qdr_core_t *core, qdr_general_work_t *work);
 void qdr_check_addr_CT(qdr_core_t *core, qdr_address_t *addr, bool was_local);

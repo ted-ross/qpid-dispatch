@@ -26,6 +26,7 @@
 ALLOC_DEFINE(qdr_address_t);
 ALLOC_DEFINE(qdr_address_config_t);
 ALLOC_DEFINE(qdr_node_t);
+ALLOC_DEFINE(qdr_link_set_t);
 ALLOC_DEFINE(qdr_delivery_t);
 ALLOC_DEFINE(qdr_delivery_ref_t);
 ALLOC_DEFINE(qdr_link_t);
@@ -161,11 +162,9 @@ void qdr_core_free(qdr_core_t *core)
         conn = DEQ_HEAD(core->open_connections);
     }
 
-    if (core->query_lock)                sys_mutex_free(core->query_lock);
-    if (core->routers_by_mask_bit)       free(core->routers_by_mask_bit);
-    if (core->control_links_by_mask_bit) free(core->control_links_by_mask_bit);
-    if (core->data_links_by_mask_bit)    free(core->data_links_by_mask_bit);
-    if (core->neighbor_free_mask)        qd_bitmask_free(core->neighbor_free_mask);
+    if (core->query_lock)          sys_mutex_free(core->query_lock);
+    if (core->routers_by_mask_bit) free(core->routers_by_mask_bit);
+    if (core->neighbor_free_mask)  qd_bitmask_free(core->neighbor_free_mask);
 
     free(core);
 }

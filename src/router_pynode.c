@@ -87,12 +87,13 @@ static PyObject* qd_set_link(PyObject *self, PyObject *args)
     RouterAdapter *adapter = (RouterAdapter*) self;
     qd_router_t   *router  = adapter->router;
     int            router_maskbit;
+    const char    *link_id;
     int            link_maskbit;
 
-    if (!PyArg_ParseTuple(args, "ii", &router_maskbit, &link_maskbit))
+    if (!PyArg_ParseTuple(args, "isi", &router_maskbit, &link_id, &link_maskbit))
         return 0;
 
-    qdr_core_set_link(router->router_core, router_maskbit, link_maskbit);
+    qdr_core_set_link(router->router_core, router_maskbit, link_id);
     qd_tracemask_set_link(router->tracemask, router_maskbit, link_maskbit);
 
     Py_INCREF(Py_None);
@@ -398,7 +399,7 @@ static void qd_router_mobile_removed(void *context, const char *address_hash)
 }
 
 
-static void qd_router_link_lost(void *context, int link_mask_bit)
+static void qd_router_link_lost(void *context, const char *link_id)
 {
     qd_router_t *router = (qd_router_t*) context;
     PyObject    *pArgs;
@@ -407,7 +408,7 @@ static void qd_router_link_lost(void *context, int link_mask_bit)
     if (pyRemoved && qd_router_mode_ok(router)) {
         qd_python_lock_state_t lock_state = qd_python_lock();
         pArgs = PyTuple_New(1);
-        PyTuple_SetItem(pArgs, 0, PyInt_FromLong((long) link_mask_bit));
+        PyTuple_SetItem(pArgs, 0, PyString_FromString(link_id));
         pValue = PyObject_CallObject(pyLinkLost, pArgs);
         qd_error_py();
         Py_DECREF(pArgs);

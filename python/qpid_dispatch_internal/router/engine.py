@@ -23,7 +23,6 @@ from link import LinkStateEngine
 from path import PathEngine
 from mobile import MobileAddressEngine
 from node import NodeTracker
-from edgenode import NodeTrackerEdge
 from message import Message
 
 from traceback import format_exc, extract_stack
@@ -50,6 +49,7 @@ class RouterEngine:
         self.domain         = "domain"
         self.router_adapter = router_adapter
         self.mode           = mode
+        self.is_edge_mode   = mode == 'edge'
         self._config        = None # Not yet loaded
         self._log_hello     = LogAdapter("ROUTER_HELLO")
         self._log_ls        = LogAdapter("ROUTER_LS")
@@ -70,20 +70,11 @@ class RouterEngine:
         ##
         ## Launch the appropriate sub-module engines for the router mode
         ##
-        if self.mode == 'interior':
-            self.node_tracker          = NodeTracker(self, self.max_routers)
-            self.hello_protocol        = HelloProtocol(self, self.node_tracker)
-            self.link_state_engine     = LinkStateEngine(self, False)
-            self.path_engine           = PathEngine(self)
-            self.mobile_address_engine = MobileAddressEngine(self, self.node_tracker)
-        elif self.mode == 'edge':
-            self.node_tracker          = NodeTrackerEdge(self, self.max_routers)
-            self.hello_protocol        = HelloProtocol(self, self.node_tracker)
-            self.link_state_engine     = LinkStateEngine(self, True)
-            self.path_engine           = None
-            self.mobile_address_engine = MobileAddressEngine(self, self.node_tracker)
-        else:
-            raise Exception("Invalid router mode: %s" % self.mode)
+        self.node_tracker          = NodeTracker(self, self.max_routers, self.is_edge_mode)
+        self.hello_protocol        = HelloProtocol(self, self.node_tracker)
+        self.link_state_engine     = LinkStateEngine(self, self.is_edge_mode)
+        self.path_engine           = PathEngine(self)
+        self.mobile_address_engine = MobileAddressEngine(self, self.node_tracker)
 
 
     ##========================================================================================
@@ -137,7 +128,7 @@ class RouterEngine:
         except Exception:
             self.log(LOG_ERROR, "Exception in timer processing\n%s" % format_exc(LOG_STACK_LIMIT))
 
-    def handleControlMessage(self, opcode, body, link_id, cost):
+    def handleControlMessage(self, opcode, body, link_id, link_maskbit, cost):
         """
         """
         try:
@@ -145,7 +136,7 @@ class RouterEngine:
             if   opcode == 'HELLO':
                 msg = MessageHELLO(body)
                 self.log_hello(LOG_TRACE, "RCVD: %r" % msg)
-                self.hello_protocol.handle_hello(msg, now, link_id, cost)
+                self.hello_protocol.handle_hello(msg, now, link_id, link_maskbit, cost)
 
             elif opcode == 'RA':
                 msg = MessageRA(body)
@@ -176,12 +167,12 @@ class RouterEngine:
             self.log(LOG_ERROR, "Exception in control message processing\n%s" % format_exc(LOG_STACK_LIMIT))
             self.log(LOG_ERROR, "Control message error: opcode=%s body=%r" % (opcode, body))
 
-    def receive(self, message, link_id, cost):
+    def receive(self, message, link_id, link_maskbit, cost):
         """
         This is the IoAdapter message-receive handler
         """
         try:
-            self.handleControlMessage(message.properties['opcode'], message.body, link_id, cost)
+            self.handleControlMessage(message.properties['opcode'], message.body, link_id, link_maskbit, cost)
         except Exception:
             self.log(LOG_ERROR, "Exception in raw message processing\n%s" % format_exc(LOG_STACK_LIMIT))
             self.log(LOG_ERROR, "Exception in raw message processing: properties=%r body=%r" %

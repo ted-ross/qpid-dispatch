@@ -107,22 +107,25 @@ class MessageHELLO(object):
     This message is used by directly connected routers to determine with whom they have
     bidirectional connectivity.
     """
-    def __init__(self, body, _id=None, _seen_peers=None, _instance=long(0)):
+    def __init__(self, body, _id=None, _seen_peers=None, _instance=long(0), _mode='interior'):
         if body:
             self.id = getMandatory(body, 'id', str)
             self.area = '0'
             self.seen_peers = getMandatory(body, 'seen', list)
             self.instance = getOptional(body, 'instance', 0, long)
             self.version  = getOptional(body, 'pv', 0, long)
+            self.mode     = getOptional(body, 'mode', 'interior', str)
         else:
             self.id   = _id
             self.area = '0'
             self.seen_peers = _seen_peers
             self.instance = _instance
             self.version  = ProtocolVersion
+            self.mode     = _mode
 
     def __repr__(self):
-        return "HELLO(id=%s pv=%d area=%s inst=%d seen=%r)" % (self.id, self.version, self.area, self.instance, self.seen_peers)
+        return "HELLO(id=%s pv=%d mode=%s area=%s inst=%d seen=%r)" % \
+            (self.id, self.version, self.mode, self.area, self.instance, self.seen_peers)
 
     def get_opcode(self):
         return 'HELLO'
@@ -130,6 +133,7 @@ class MessageHELLO(object):
     def to_dict(self):
         return {'id'       : self.id,
                 'pv'       : self.version,
+                'mode'     : self.mode,
                 'area'     : self.area,
                 'instance' : self.instance,
                 'seen'     : self.seen_peers}

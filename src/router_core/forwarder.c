@@ -200,7 +200,9 @@ void qdr_forward_deliver_CT(qdr_core_t *core, qdr_link_t *out_link, qdr_delivery
 
 void qdr_forward_on_message(qdr_core_t *core, qdr_general_work_t *work)
 {
-    work->on_message(work->on_message_context, work->msg, work->maskbit, work->inter_router_cost);
+    const char *link_id = work->link_id ? qdr_field_copy(work->link_id) : 0;
+    work->on_message(work->on_message_context, work->msg, link_id, work->link_maskbit, work->inter_router_cost);
+    qdr_field_free(work->link_id);
     qd_message_free(work->msg);
 }
 
@@ -211,7 +213,8 @@ void qdr_forward_on_message_CT(qdr_core_t *core, qdr_subscription_t *sub, qdr_li
     work->on_message         = sub->on_message;
     work->on_message_context = sub->on_message_context;
     work->msg                = qd_message_copy(msg);
-    work->maskbit            = link ? link->conn->mask_bit : 0;
+    work->link_id            = link && link->conn->link_set ? qdr_field((const char*) qd_hash_key_by_handle(link->conn->link_set->hash_handle)) : 0;
+    work->link_maskbit       = link && link->conn->link_set ? link->conn->link_set->mask_bit : -1;
     work->inter_router_cost  = link ? link->conn->inter_router_cost : 1;
     qdr_post_general_work_CT(core, work);
 }
@@ -283,10 +286,12 @@ int qdr_forward_multicast_CT(qdr_core_t      *core,
     // Forward to the next-hops for remote destinations.
     //
     if (origin >= 0) {
-        int           dest_bit;
-        qdr_link_t   *dest_link;
-        qdr_node_t   *next_node;
-        qd_bitmask_t *link_set = qd_bitmask(0);
+        int                  dest_bit;
+        qdr_link_t          *dest_link;
+        qdr_node_t          *next_node;
+        qdr_link_ref_list_t  out_links;
+
+        DEQ_INIT(out_links);
 
         //
         // Loop over the target nodes for this address.  Build a set of outgoing links
@@ -307,30 +312,32 @@ int qdr_forward_multicast_CT(qdr_core_t      *core,
             else
                 next_node = rnode;
 
-            dest_link = control ? PEER_CONTROL_LINK(core, next_node) : PEER_DATA_LINK(core, next_node);
-            if (dest_link && qd_bitmask_value(rnode->valid_origins, origin))
-                qd_bitmask_set_bit(link_set, dest_link->conn->mask_bit);
+            //
+            // The EXCLUDE_PEER check looks to see if the next_node is in the exclusion
+            // list, meaning that the delivery has already passed through that node.  We
+            // will not send a delivery back through a node that it's already passed through.
+            //
+            if (!EXCLUDE_PEER(next_node, link_exclusion)) {
+                dest_link = control ? PEER_CONTROL_LINK(next_node) : PEER_DATA_LINK(next_node);
+                if (dest_link && qd_bitmask_value(rnode->valid_origins, origin))
+                    qdr_add_link_ref(&out_links, dest_link, QDR_LINK_LIST_CLASS_FORWARD);
+            }
         }
 
         //
         // Send a copy of the message outbound on each identified link.
         //
-        int link_bit;
-        while (qd_bitmask_first_set(link_set, &link_bit)) {
-            qd_bitmask_clear_bit(link_set, link_bit);
-            dest_link = control ?
-                core->control_links_by_mask_bit[link_bit] :
-                core->data_links_by_mask_bit[link_bit];
-            if (dest_link && (!link_exclusion || qd_bitmask_value(link_exclusion, link_bit) == 0)) {
-                qdr_delivery_t *out_delivery = qdr_forward_new_delivery_CT(core, in_delivery, dest_link, msg);
-                qdr_forward_deliver_CT(core, dest_link, out_delivery);
-                fanout++;
-                addr->deliveries_transit++;
-                core->deliveries_transit++;
-            }
+        qdr_link_ref_t *link_ref = DEQ_HEAD(out_links);
+        while (link_ref) {
+            dest_link = link_ref->link;
+            qdr_del_link_ref(&out_links, dest_link, QDR_LINK_LIST_CLASS_FORWARD);
+            qdr_delivery_t *out_delivery = qdr_forward_new_delivery_CT(core, in_delivery, dest_link, msg);
+            qdr_forward_deliver_CT(core, dest_link, out_delivery);
+            fanout++;
+            addr->deliveries_transit++;
+            core->deliveries_transit++;
+            link_ref = DEQ_HEAD(out_links);
         }
-
-        qd_bitmask_free(link_set);
     }
 
     if (!exclude_inprocess) {
@@ -494,7 +501,7 @@ int qdr_forward_closest_CT(qdr_core_t      *core,
             else
                 next_node = rnode;
 
-            out_link = control ? PEER_CONTROL_LINK(core, next_node) : PEER_DATA_LINK(core, next_node);
+            out_link = control ? PEER_CONTROL_LINK(next_node) : PEER_DATA_LINK(next_node);
             if (out_link) {
                 out_delivery = qdr_forward_new_delivery_CT(core, in_delivery, out_link, msg);
                 qdr_forward_deliver_CT(core, out_link, out_delivery);
@@ -597,9 +604,9 @@ int qdr_forward_balanced_CT(qdr_core_t      *core,
         for (QD_BITMASK_EACH(addr->rnodes, node_bit, c)) {
             qdr_node_t *rnode     = core->routers_by_mask_bit[node_bit];
             qdr_node_t *next_node = rnode->next_hop ? rnode->next_hop : rnode;
-            qdr_link_t *link      = PEER_DATA_LINK(core, next_node);
+            qdr_link_t *link      = PEER_DATA_LINK(next_node);
             if (!link) continue;
-            int         link_bit  = link->conn->mask_bit;
+            int         link_bit  = link->conn->link_set ? link->conn->link_set->mask_bit : -1;
             int         value     = addr->outstanding_deliveries[link_bit];
             bool        eligible  = link->capacity > value;
 
@@ -733,8 +740,8 @@ bool qdr_forward_link_balanced_CT(qdr_core_t     *core,
                 else
                     next_node = rnode;
 
-                if (next_node && PEER_DATA_LINK(core, next_node))
-                    conn = PEER_DATA_LINK(core, next_node)->conn;
+                if (next_node && PEER_DATA_LINK(next_node))
+                    conn = PEER_DATA_LINK(next_node)->conn;
             }
         }
     }
