@@ -724,6 +724,7 @@ struct qdr_core_t {
     qdr_node_list_t       routers;            ///< List of routers, in order of cost, from lowest to highest
     qd_bitmask_t         *neighbor_free_mask;
     qdr_node_t          **routers_by_mask_bit;
+    qdr_node_t           *uplink_router;
     uint64_t              cost_epoch;
 
     uint64_t              next_tag;

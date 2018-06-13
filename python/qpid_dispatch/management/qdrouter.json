@@ -1508,6 +1508,10 @@
                     "description": "Router-protocol version supported by the node.",
                     "type": "integer"
                 },
+                "mode": {
+                    "description": "Mode of this router: interior or edge.",
+                    "type": "string"
+                },
                 "instance": {
                     "description": "Remote node boot number.",
                     "type": "integer"

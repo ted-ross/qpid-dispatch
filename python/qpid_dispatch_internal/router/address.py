@@ -32,6 +32,7 @@ class Address(str):
 
     AMQP="amqp:"
     TOPO="_topo"
+    EDGE="_edge"
 
     def __new__(self, addr): # Subclassing immutable type, must use __new__ not __init__
         if addr.startswith(self.AMQP): return str.__new__(addr)
@@ -52,6 +53,17 @@ class Address(str):
         @param area: Routing area (placeholder)
         """
         addr = "%s/%s/%s" % (cls.TOPO, area, router_id)
+        if path: addr = "%s/%s" % (addr, path)
+        return Address(addr)
+
+    @classmethod
+    def edge(cls, router_id, path=None, area=None):
+        """Create an edge address, references a specific router.
+        @param router_id: ID of target router.
+        @param path: Path part of address.
+        @param area: Routing area (placeholder)
+        """
+        addr = "%s/%s" % (cls.EDGE, router_id)
         if path: addr = "%s/%s" % (addr, path)
         return Address(addr)
 

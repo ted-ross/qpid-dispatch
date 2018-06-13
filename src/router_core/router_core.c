@@ -173,7 +173,8 @@ void qdr_router_node_free(qdr_core_t *core, qdr_node_t *rnode)
 {
     qd_bitmask_free(rnode->valid_origins);
     DEQ_REMOVE(core->routers, rnode);
-    core->routers_by_mask_bit[rnode->mask_bit] = 0;
+    if (rnode->mask_bit > -1)
+        core->routers_by_mask_bit[rnode->mask_bit] = 0;
     core->cost_epoch++;
     free_qdr_node_t(rnode);
 }

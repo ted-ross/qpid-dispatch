@@ -59,7 +59,8 @@ static PyObject *qd_add_router(PyObject *self, PyObject *args)
         return 0;
 
     qdr_core_add_router(router->router_core, address, router_maskbit);
-    qd_tracemask_add_router(router->tracemask, address, router_maskbit);
+    if (router_maskbit > -1)
+        qd_tracemask_add_router(router->tracemask, address, router_maskbit);
 
     Py_INCREF(Py_None);
     return Py_None;
@@ -76,7 +77,8 @@ static PyObject* qd_del_router(PyObject *self, PyObject *args)
         return 0;
 
     qdr_core_del_router(router->router_core, router_maskbit);
-    qd_tracemask_del_router(router->tracemask, router_maskbit);
+    if (router_maskbit > -1)
+        qd_tracemask_del_router(router->tracemask, router_maskbit);
 
     Py_INCREF(Py_None);
     return Py_None;
@@ -95,7 +97,8 @@ static PyObject* qd_set_link(PyObject *self, PyObject *args)
         return 0;
 
     qdr_core_set_link(router->router_core, router_maskbit, link_id);
-    qd_tracemask_set_link(router->tracemask, router_maskbit, link_maskbit);
+    if (router_maskbit > -1)
+        qd_tracemask_set_link(router->tracemask, router_maskbit, link_maskbit);
 
     Py_INCREF(Py_None);
     return Py_None;
@@ -112,7 +115,8 @@ static PyObject* qd_remove_link(PyObject *self, PyObject *args)
         return 0;
 
     qdr_core_remove_link(router->router_core, router_maskbit);
-    qd_tracemask_remove_link(router->tracemask, router_maskbit);
+    if (router_maskbit > -1)
+        qd_tracemask_remove_link(router->tracemask, router_maskbit);
 
     Py_INCREF(Py_None);
     return Py_None;

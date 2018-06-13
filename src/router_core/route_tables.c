@@ -256,14 +256,16 @@ static void qdr_add_router_CT(qdr_core_t *core, qdr_action_t *action, bool disca
     }
 
     do {
-        if (router_maskbit >= qd_bitmask_width() || router_maskbit < -1) {
-            qd_log(core->log, QD_LOG_CRITICAL, "add_router: Router maskbit out of range: %d", router_maskbit);
-            break;
-        }
+        if (router_maskbit != -1) {
+            if (router_maskbit >= qd_bitmask_width() || router_maskbit < -1) {
+                qd_log(core->log, QD_LOG_CRITICAL, "add_router: Router maskbit out of range: %d", router_maskbit);
+                break;
+            }
 
-        if (core->routers_by_mask_bit[router_maskbit] != 0) {
-            qd_log(core->log, QD_LOG_CRITICAL, "add_router: Router maskbit already in use: %d", router_maskbit);
-            break;
+            if (core->routers_by_mask_bit[router_maskbit] != 0) {
+                qd_log(core->log, QD_LOG_CRITICAL, "add_router: Router maskbit already in use: %d", router_maskbit);
+                break;
+            }
         }
 
         //
@@ -332,7 +334,8 @@ static void qdr_add_router_CT(qdr_core_t *core, qdr_action_t *action, bool disca
             // Add the router record to the mask-bit index.
             //
             core->routers_by_mask_bit[router_maskbit] = rnode;
-        }
+        } else
+            core->uplink_router = rnode;
     } while (false);
 
     qdr_field_free(address);
@@ -343,42 +346,45 @@ static void qdr_del_router_CT(qdr_core_t *core, qdr_action_t *action, bool disca
 {
     int router_maskbit = action->args.route_table.router_maskbit;
 
-    if (router_maskbit >= qd_bitmask_width() || router_maskbit < 0) {
+    if (router_maskbit >= qd_bitmask_width() || router_maskbit < -1) {
         qd_log(core->log, QD_LOG_CRITICAL, "del_router: Router maskbit out of range: %d", router_maskbit);
         return;
     }
 
-    if (core->routers_by_mask_bit[router_maskbit] == 0) {
+    if (router_maskbit != -1 && core->routers_by_mask_bit[router_maskbit] == 0) {
         qd_log(core->log, QD_LOG_CRITICAL, "del_router: Deleting nonexistent router: %d", router_maskbit);
         return;
     }
 
-    qdr_node_t    *rnode = core->routers_by_mask_bit[router_maskbit];
+    qdr_node_t    *rnode = router_maskbit > -1 ? core->routers_by_mask_bit[router_maskbit] : core->uplink_router;
     qdr_address_t *oaddr = rnode->owning_addr;
     assert(oaddr);
 
     //
     // Unlink the router node from the address record
     //
-    qd_bitmask_clear_bit(oaddr->rnodes, router_maskbit);
-    qd_bitmask_clear_bit(core->router_addr_T->rnodes, router_maskbit);
-    qd_bitmask_clear_bit(core->routerma_addr_T->rnodes, router_maskbit);
-    rnode->ref_count -= 3;
+    if (router_maskbit != -1) {
+        qd_bitmask_clear_bit(oaddr->rnodes, router_maskbit);
+        qd_bitmask_clear_bit(core->router_addr_T->rnodes, router_maskbit);
+        qd_bitmask_clear_bit(core->routerma_addr_T->rnodes, router_maskbit);
+        rnode->ref_count -= 3;
 
-    //
-    // While the router node has a non-zero reference count, look for addresses
-    // to unlink the node from.
-    //
-    qdr_address_t *addr = DEQ_HEAD(core->addrs);
-    while (addr && rnode->ref_count > 0) {
-        if (qd_bitmask_clear_bit(addr->rnodes, router_maskbit))
-            //
-            // If the cleared bit was originally set, decrement the ref count
-            //
-            rnode->ref_count--;
-        addr = DEQ_NEXT(addr);
-    }
-    assert(rnode->ref_count == 0);
+        //
+        // While the router node has a non-zero reference count, look for addresses
+        // to unlink the node from.
+        //
+        qdr_address_t *addr = DEQ_HEAD(core->addrs);
+        while (addr && rnode->ref_count > 0) {
+            if (qd_bitmask_clear_bit(addr->rnodes, router_maskbit))
+                //
+                // If the cleared bit was originally set, decrement the ref count
+                //
+                rnode->ref_count--;
+            addr = DEQ_NEXT(addr);
+        }
+        assert(rnode->ref_count == 0);
+    } else
+        core->uplink_router = 0;
 
     //
     // Free the router node.
@@ -402,12 +408,12 @@ static void qdr_set_link_CT(qdr_core_t *core, qdr_action_t *action, bool discard
         if (discard)
             break;
 
-        if (router_maskbit >= qd_bitmask_width() || router_maskbit < 0) {
+        if (router_maskbit >= qd_bitmask_width() || router_maskbit < -1) {
             qd_log(core->log, QD_LOG_CRITICAL, "set_link: Router maskbit out of range: %d", router_maskbit);
             break;
         }
 
-        if (core->routers_by_mask_bit[router_maskbit] == 0) {
+        if (router_maskbit != -1 && core->routers_by_mask_bit[router_maskbit] == 0) {
             qd_log(core->log, QD_LOG_CRITICAL, "set_link: Router not found");
             break;
         }
@@ -426,9 +432,11 @@ static void qdr_set_link_CT(qdr_core_t *core, qdr_action_t *action, bool discard
         //
         // Add the peer_link reference to the router record.
         //
-        qdr_node_t *rnode = core->routers_by_mask_bit[router_maskbit];
-        rnode->link_set = link_set;
-        qdr_addr_start_inlinks_CT(core, rnode->owning_addr);
+        qdr_node_t *rnode = router_maskbit > -1 ? core->routers_by_mask_bit[router_maskbit] : core->uplink_router;
+        if (rnode) {
+            rnode->link_set = link_set;
+            qdr_addr_start_inlinks_CT(core, rnode->owning_addr);
+        }
     } while (false);
 
     qdr_field_free(link_id);

@@ -52,6 +52,7 @@ def parse_args(argv):
     parser.add_option("-c", "--connections", help="Show Connections",       action="store_const", const="c",   dest="show")
     parser.add_option("-l", "--links", help="Show Router Links",            action="store_const", const="l",   dest="show")
     parser.add_option("-n", "--nodes", help="Show Router Nodes",            action="store_const", const="n",   dest="show")
+    parser.add_option("-e", "--edges", help="Show Edge Router Nodes",       action="store_const", const="e",   dest="show")
     parser.add_option("-a", "--address", help="Show Router Addresses",      action="store_const", const="a",   dest="show")
     parser.add_option("-m", "--memory", help="Show Router Memory Stats",    action="store_const", const="m",   dest="show")
     parser.add_option("--autolinks", help="Show Auto Links",                action="store_const", const="autolinks",  dest="show")
@@ -225,8 +226,9 @@ class BusManager(Node):
 
     def _list_clean(self, inlist):
         outlist = []
-        for i in inlist:
-            outlist.append(str(i))
+        if inlist:
+            for i in inlist:
+                outlist.append(str(i))
         return outlist
 
     def displayGeneral(self):
@@ -365,6 +367,8 @@ class BusManager(Node):
         lastTopoChange = 0.0
 
         for node in objects:
+            if node.mode != "interior":
+                continue
             row = []
             if node.lastTopoChange:
                 if float(node.lastTopoChange) > lastTopoChange:
@@ -394,6 +398,33 @@ class BusManager(Node):
             disp.formattedTable(title, heads, dispRows)
         else:
             print("Router is Standalone - No Router List")
+
+    def displayRouterEdges(self):
+        disp = Display(prefix="  ")
+        heads = []
+        heads.append(Header("router-id"))
+        heads.append(Header("link"))
+        heads.append(Header("ver"))
+        heads.append(Header("cost"))
+        rows = []
+        objects = self.query('org.apache.qpid.dispatch.router.node', limit=self.opts.limit)
+
+        for node in objects:
+            if node.mode != "edge":
+                continue
+            row = []
+            row.append(node.id)
+            row.append(node.routerLink)
+            row.append(get(node, 'protocolVersion'))
+            row.append(get(node, 'cost'))
+            rows.append(row)
+        if len(rows) > 0:
+            title = "Connected Edge Routers"
+            sort = Sorter(heads, rows, 'router-id')
+            dispRows = sort.getSorted()
+            disp.formattedTable(title, heads, dispRows)
+        else:
+            print "Router is Standalone - No Router List"
 
     def displayAddresses(self):
         disp = Display(prefix="  ")
@@ -539,6 +570,7 @@ class BusManager(Node):
     def displayMain(self, identitys, main):
         if   main == 'l': self.displayRouterLinks()
         elif main == 'n': self.displayRouterNodes()
+        elif main == 'e': self.displayRouterEdges()
         elif main == 'a': self.displayAddresses()
         elif main == 'm': self.displayMemory()
         elif main == 'g': self.displayGeneral()
