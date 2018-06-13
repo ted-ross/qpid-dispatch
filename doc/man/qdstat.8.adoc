@@ -154,7 +154,7 @@ name::
 The link name (only shown if the -v option is provided).
 
 qdstat -n
-^^^^^^^^^
+~~~~~~~~~
 
 router-id::
 The router's ID.
@@ -173,6 +173,18 @@ The list of neighbor routers (the router's link-state). This field is available 
 
 valid-origins::
 The list of origin routers for which the best path to the listed router passes through this router (available only with the -v option).
+
+qdstat -e
+~~~~~~~~~
+
+router-id::
+The edge router's ID.
+
+link::
+The ID of the link to the neighbor router.
+
+cost::
+The topology cost to this remote router (with -v option only).
 
 qdstat -a
 ~~~~~~~~~
