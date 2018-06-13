@@ -58,9 +58,10 @@ class HelloProtocol(object):
                 self.container.log_hello(LOG_CRITICAL, "Detected Neighbor Router with a Duplicate ID - %s" % msg.id)
             return
         peer_is_edge = msg.mode == 'edge'
-        if self.mode_is_edge and peer_is_edge and not self.mismatch_reported:
-            self.mismatch_reported = True
-            self.container.log_hello(LOG_CRITICAL, "Illegal Edge-to-Edge Connection with ID - %s" % msg.id)
+        if self.mode_is_edge and peer_is_edge:
+            if not self.mismatch_reported:
+                self.mismatch_reported = True
+                self.container.log_hello(LOG_CRITICAL, "Illegal Edge-to-Edge Connection with ID - %s" % msg.id)
             return
         self.hellos[msg.id] = now
         if msg.is_seen(self.id):

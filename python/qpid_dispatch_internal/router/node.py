@@ -41,6 +41,8 @@ class NodeTracker(object):
         self.flux_mode             = False
         self.nodes                 = {}  # id => RouterNode
         self.nodes_by_link_id      = {}  # link-id => node-id
+        self.chosen_uplink         = None
+        self.chosen_uplink_cost    = None
         self.maskbits              = []
         self.next_maskbit          = 1   # Reserve bit '0' to represent this router
         for i in range(max_routers):
@@ -58,13 +60,22 @@ class NodeTracker(object):
             "id": self.my_id,
             "index": 0,
             "protocolVersion": ProtocolVersion,
+            "mode": "edge" if self.edge_mode else "interior",
             "instance": self.container.instance, # Boot number, integer
             "linkState": [ls for ls in self.link_state.peers], # List of neighbour nodes
             "nextHop":  "(self)",
             "validOrigins": [],
-            "address": Address.topological(self.my_id, area=self.container.area),
+            "address": Address.edge(self.my_id) if self.edge_mode else Address.topological(self.my_id, area=self.container.area),
             "lastTopoChange" : self.last_topology_change
         })
+
+
+    def _check_lost_uplink(self, node_id):
+        if node_id == self.chosen_uplink:
+            self.chosen_uplink      = None
+            self.chosen_uplink_cost = None
+            self.container.hello_protocol.set_chosen_uplink(None)
+            self.container.log(LOG_INFO, "Lost Active Edge Uplink to %s" % node_id)
 
 
     def _do_expirations(self, now):
@@ -82,6 +93,7 @@ class NodeTracker(object):
                     node.remove_link()
                     if self.link_state.del_peer(node_id):
                         self.link_state_changed = True
+                    self._check_lost_uplink(node_id)
 
             ##
             ## Check the age of the node's link state.  If it's too old, clear it out.
@@ -218,6 +230,16 @@ class NodeTracker(object):
             node.version = version
 
         ##
+        ## If we are in edge-router mode, keep track of the chosen uplink based on cost.
+        ##
+        if self.edge_mode and self.chosen_uplink != node_id:
+            if self.chosen_uplink_cost == None or cost < self.chosen_uplink_cost:
+                self.chosen_uplink      = node_id
+                self.chosen_uplink_cost = cost
+                self.container.hello_protocol.set_chosen_uplink(node_id)
+                self.container.log(LOG_INFO, "Activated Lowest-Cost Edge Uplink to %s, cost=%d" % (node_id, cost))
+
+        ##
         ## Set the link_id to indicate this is a neighbor router.  If the link_id
         ## changed, update the index and add the neighbor to the local link state.
         ##
@@ -253,6 +275,7 @@ class NodeTracker(object):
             node.remove_link()
             if self.link_state.del_peer(node_id):
                 self.link_state_changed = True
+            self._check_lost_uplink(node_id)
 
 
     def in_flux_mode(self, now):
@@ -407,7 +430,7 @@ class RouterNode(object):
         self.need_ls_request         = True
         self.need_mobile_request     = False
         self.keep_alive_count        = 0
-        self.maskbit                 = -1 if is_edge else self.parent._allocate_maskbit()
+        self.maskbit                 = -1 if (is_edge or self.parent.edge_mode) else self.parent._allocate_maskbit()
         self.address_hash            = "%c%s" % ('H' if is_edge else 'R', self.id)
         self.adapter.add_router(self.address_hash, self.maskbit)
         self.log(LOG_TRACE, "Node %s created: maskbit=%d" % (self.id, self.maskbit))
@@ -419,11 +442,12 @@ class RouterNode(object):
             "id": self.id,
             "index": self.maskbit,
             "protocolVersion": self.version,
+            "mode": "edge" if self.is_edge else "interior",
             "instance": self.instance, # Boot number, integer
             "linkState": [ls for ls in self.link_state.peers], # List of neighbour nodes
             "nextHop":  self.next_hop_router and self.next_hop_router.id,
             "validOrigins": self.valid_origins,
-            "address": Address.topological(self.id, area=self.parent.container.area),
+            "address": Address.edge(self.id) if self.is_edge else Address.topological(self.id, area=self.parent.container.area),
             "routerLink": self.peer_link_id,
             "cost": self.cost
         })
@@ -442,7 +466,7 @@ class RouterNode(object):
             return False
         self.peer_link_id      = link_id
         self.peer_link_maskbit = link_maskbit
-        if link_id == -1:
+        if link_maskbit == -1:
             return False
         self.next_hop_router = None
         self.adapter.set_link(self.maskbit, link_id, link_maskbit)
@@ -454,8 +478,9 @@ class RouterNode(object):
     def remove_link(self):
         if self.peer_link_id != None:
             self.peer_link_id = None
-            self.adapter.remove_link(self.maskbit)
-            self.log(LOG_TRACE, "Node %s link removed" % self.id)
+            if self.peer_link_maskbit >= 0:
+                self.adapter.remove_link(self.maskbit)
+                self.log(LOG_TRACE, "Node %s link removed" % self.id)
 
 
     def delete(self):
