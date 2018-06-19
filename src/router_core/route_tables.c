@@ -31,6 +31,12 @@ static void qdr_set_cost_CT          (qdr_core_t *core, qdr_action_t *action, bo
 static void qdr_set_valid_origins_CT (qdr_core_t *core, qdr_action_t *action, bool discard);
 static void qdr_map_destination_CT   (qdr_core_t *core, qdr_action_t *action, bool discard);
 static void qdr_unmap_destination_CT (qdr_core_t *core, qdr_action_t *action, bool discard);
+static void qdr_set_uplink_CT        (qdr_core_t *core, qdr_action_t *action, bool discard);
+static void qdr_remove_uplink_CT     (qdr_core_t *core, qdr_action_t *action, bool discard);
+static void qdr_map_uplink_CT        (qdr_core_t *core, qdr_action_t *action, bool discard);
+static void qdr_unmap_uplink_CT      (qdr_core_t *core, qdr_action_t *action, bool discard);
+static void qdr_map_edge_CT          (qdr_core_t *core, qdr_action_t *action, bool discard);
+static void qdr_unmap_edge_CT        (qdr_core_t *core, qdr_action_t *action, bool discard);
 static void qdr_subscribe_CT         (qdr_core_t *core, qdr_action_t *action, bool discard);
 static void qdr_unsubscribe_CT       (qdr_core_t *core, qdr_action_t *action, bool discard);
 
@@ -48,10 +54,10 @@ void qdr_core_add_router(qdr_core_t *core, const char *address, int router_maskb
 }
 
 
-void qdr_core_del_router(qdr_core_t *core, int router_maskbit)
+void qdr_core_del_router(qdr_core_t *core, const char *address)
 {
     qdr_action_t *action = qdr_action(qdr_del_router_CT, "del_router");
-    action->args.route_table.router_maskbit = router_maskbit;
+    action->args.route_table.address = qdr_field(address);
     qdr_action_enqueue(core, action);
 }
 
@@ -124,6 +130,56 @@ void qdr_core_unmap_destination(qdr_core_t *core, int router_maskbit, const char
     action->args.route_table.address        = qdr_field(address_hash);
     qdr_action_enqueue(core, action);
 }
+
+
+void qdr_core_set_uplink(qdr_core_t *core, const char *address_hash)
+{
+    qdr_action_t *action = qdr_action(qdr_set_uplink_CT, "set_uplink");
+    action->args.route_table.address = qdr_field(address_hash);
+    qdr_action_enqueue(core, action);
+}
+
+
+void qdr_core_remove_uplink(qdr_core_t *core)
+{
+    qdr_action_t *action = qdr_action(qdr_remove_uplink_CT, "remove_uplink");
+    qdr_action_enqueue(core, action);
+}
+
+
+void qdr_core_map_uplink(qdr_core_t *core, const char *address_hash)
+{
+    qdr_action_t *action = qdr_action(qdr_map_uplink_CT, "map_uplink");
+    action->args.route_table.address = qdr_field(address_hash);
+    qdr_action_enqueue(core, action);
+}
+
+
+void qdr_core_unmap_uplink(qdr_core_t *core, const char *address_hash)
+{
+    qdr_action_t *action = qdr_action(qdr_unmap_uplink_CT, "unmap_uplink");
+    action->args.route_table.address = qdr_field(address_hash);
+    qdr_action_enqueue(core, action);
+}
+
+
+void qdr_core_map_edge(qdr_core_t *core, const char *address_hash, const char *edge_address)
+{
+    qdr_action_t *action = qdr_action(qdr_map_edge_CT, "map_edge");
+    action->args.route_table.address = qdr_field(address_hash);
+    action->args.route_table.link_id = qdr_field(edge_address);
+    qdr_action_enqueue(core, action);
+}
+
+
+void qdr_core_unmap_edge(qdr_core_t *core, const char *address_hash, const char *edge_address)
+{
+    qdr_action_t *action = qdr_action(qdr_unmap_edge_CT, "unmap_edge");
+    action->args.route_table.address = qdr_field(address_hash);
+    action->args.route_table.link_id = qdr_field(edge_address);
+    qdr_action_enqueue(core, action);
+}
+
 
 void qdr_core_route_table_handlers(qdr_core_t           *core, 
                                    void                 *context,
@@ -241,6 +297,7 @@ void qdr_route_table_setup_CT(qdr_core_t *core)
     if (core->router_mode == QD_ROUTER_MODE_EDGE) {
         core->hello_addr  = qdr_add_local_address_CT(core, 'L', "qdhello", QD_TREATMENT_MULTICAST_FLOOD);
         core->uplink_addr = qdr_add_local_address_CT(core, 'L', "_uplink", QD_TREATMENT_ANYCAST_CLOSEST);
+        core->uplink_addr->via_uplink = true;
     }
 }
 
@@ -250,22 +307,18 @@ static void qdr_add_router_CT(qdr_core_t *core, qdr_action_t *action, bool disca
     int          router_maskbit = action->args.route_table.router_maskbit;
     qdr_field_t *address        = action->args.route_table.address;
 
-    if (discard) {
-        qdr_field_free(address);
-        return;
-    }
-
     do {
-        if (router_maskbit != -1) {
-            if (router_maskbit >= qd_bitmask_width() || router_maskbit < -1) {
-                qd_log(core->log, QD_LOG_CRITICAL, "add_router: Router maskbit out of range: %d", router_maskbit);
-                break;
-            }
+        if (discard)
+            break;
 
-            if (core->routers_by_mask_bit[router_maskbit] != 0) {
-                qd_log(core->log, QD_LOG_CRITICAL, "add_router: Router maskbit already in use: %d", router_maskbit);
-                break;
-            }
+        if (router_maskbit >= qd_bitmask_width() || router_maskbit < -1) {
+            qd_log(core->log, QD_LOG_CRITICAL, "add_router: Router maskbit out of range: %d", router_maskbit);
+            break;
+        }
+
+        if (router_maskbit != -1 && core->routers_by_mask_bit[router_maskbit] != 0) {
+            qd_log(core->log, QD_LOG_CRITICAL, "add_router: Router maskbit already in use: %d", router_maskbit);
+            break;
         }
 
         //
@@ -300,6 +353,7 @@ static void qdr_add_router_CT(qdr_core_t *core, qdr_action_t *action, bool disca
         qdr_node_t *rnode = new_qdr_node_t();
         DEQ_ITEM_INIT(rnode);
         ZERO(rnode);
+        addr->owned_node     = rnode;
         rnode->owning_addr   = addr;
         rnode->mask_bit      = router_maskbit;
         rnode->valid_origins = qd_bitmask(0);
@@ -334,8 +388,7 @@ static void qdr_add_router_CT(qdr_core_t *core, qdr_action_t *action, bool disca
             // Add the router record to the mask-bit index.
             //
             core->routers_by_mask_bit[router_maskbit] = rnode;
-        } else
-            core->uplink_router = rnode;
+        }
     } while (false);
 
     qdr_field_free(address);
@@ -344,58 +397,69 @@ static void qdr_add_router_CT(qdr_core_t *core, qdr_action_t *action, bool disca
 
 static void qdr_del_router_CT(qdr_core_t *core, qdr_action_t *action, bool discard)
 {
-    int router_maskbit = action->args.route_table.router_maskbit;
+    qdr_field_t *address = action->args.route_table.address;
 
-    if (router_maskbit >= qd_bitmask_width() || router_maskbit < -1) {
-        qd_log(core->log, QD_LOG_CRITICAL, "del_router: Router maskbit out of range: %d", router_maskbit);
-        return;
-    }
+    do {
+        if (discard)
+            break;
 
-    if (router_maskbit != -1 && core->routers_by_mask_bit[router_maskbit] == 0) {
-        qd_log(core->log, QD_LOG_CRITICAL, "del_router: Deleting nonexistent router: %d", router_maskbit);
-        return;
-    }
+        qd_iterator_t *iter = address->iterator;
+        qdr_address_t *oaddr;
 
-    qdr_node_t    *rnode = router_maskbit > -1 ? core->routers_by_mask_bit[router_maskbit] : core->uplink_router;
-    qdr_address_t *oaddr = rnode->owning_addr;
-    assert(oaddr);
+        qd_iterator_reset_view(iter, ITER_VIEW_ALL);
+        qd_hash_retrieve(core->addr_hash, iter, (void**) &oaddr);
 
-    //
-    // Unlink the router node from the address record
-    //
-    if (router_maskbit != -1) {
-        qd_bitmask_clear_bit(oaddr->rnodes, router_maskbit);
-        qd_bitmask_clear_bit(core->router_addr_T->rnodes, router_maskbit);
-        qd_bitmask_clear_bit(core->routerma_addr_T->rnodes, router_maskbit);
-        rnode->ref_count -= 3;
-
-        //
-        // While the router node has a non-zero reference count, look for addresses
-        // to unlink the node from.
-        //
-        qdr_address_t *addr = DEQ_HEAD(core->addrs);
-        while (addr && rnode->ref_count > 0) {
-            if (qd_bitmask_clear_bit(addr->rnodes, router_maskbit))
-                //
-                // If the cleared bit was originally set, decrement the ref count
-                //
-                rnode->ref_count--;
-            addr = DEQ_NEXT(addr);
+        if (oaddr == 0) {
+            qd_log(core->log, QD_LOG_CRITICAL, "del_router: Router not found");
+            break;
         }
-        assert(rnode->ref_count == 0);
-    } else
-        core->uplink_router = 0;
 
-    //
-    // Free the router node.
-    //
-    qdr_router_node_free(core, rnode);
+        qdr_node_t *rnode          = oaddr->owned_node;
+        int         router_maskbit = rnode->mask_bit;
 
-    //
-    // Check the address and free it if there are no other interested parties tracking it
-    //
-    oaddr->block_deletion = false;
-    qdr_check_addr_CT(core, oaddr, false);
+        //
+        // Unlink the router node from the address record
+        //
+        if (router_maskbit != -1) {
+            qd_bitmask_clear_bit(oaddr->rnodes, router_maskbit);
+            qd_bitmask_clear_bit(core->router_addr_T->rnodes, router_maskbit);
+            qd_bitmask_clear_bit(core->routerma_addr_T->rnodes, router_maskbit);
+            rnode->ref_count -= 3;
+
+            //
+            // While the router node has a non-zero reference count, look for addresses
+            // to unlink the node from.
+            //
+            qdr_address_t *addr = DEQ_HEAD(core->addrs);
+            while (addr && rnode->ref_count > 0) {
+                if (qd_bitmask_clear_bit(addr->rnodes, router_maskbit))
+                    //
+                    // If the cleared bit was originally set, decrement the ref count
+                    //
+                    rnode->ref_count--;
+                addr = DEQ_NEXT(addr);
+            }
+            assert(rnode->ref_count == 0);
+        }
+
+        // TODO - account for edge references
+
+        if (rnode == core->uplink_router)
+            core->uplink_router = 0;
+
+        //
+        // Free the router node.
+        //
+        qdr_router_node_free(core, rnode);
+
+        //
+        // Check the address and free it if there are no other interested parties tracking it
+        //
+        oaddr->block_deletion = false;
+        qdr_check_addr_CT(core, oaddr, false);
+    } while(false);
+
+    qdr_field_free(address);
 }
 
 
@@ -659,6 +723,99 @@ static void qdr_unmap_destination_CT(qdr_core_t *core, qdr_action_t *action, boo
 
     qdr_field_free(address);
 }
+
+
+static void qdr_set_uplink_CT(qdr_core_t *core, qdr_action_t *action, bool discard)
+{
+    qdr_field_t *address = action->args.route_table.address;
+
+    do {
+        if (discard)
+            break;
+
+        //
+        // Hash lookup the edge-router address.
+        //
+        qd_iterator_t *iter = address->iterator;
+        qdr_address_t *addr;
+
+        qd_iterator_reset_view(iter, ITER_VIEW_ALL);
+        qd_hash_retrieve(core->addr_hash, iter, (void**) &addr);
+
+        if (!addr) {
+            qd_log(core->log, QD_LOG_CRITICAL, "set_uplink: Router not found");
+            break;
+        }
+
+        core->uplink_router = addr->owned_node;
+    } while (false);
+
+    qdr_field_free(address);
+}
+
+
+static void qdr_remove_uplink_CT(qdr_core_t *core, qdr_action_t *action, bool discard)
+{
+    if (!discard)
+        core->uplink_router = 0;
+}
+
+
+static void qdr_map_uplink_CT(qdr_core_t *core, qdr_action_t *action, bool discard)
+{
+    qdr_field_t *address_hash = action->args.route_table.address;
+
+    do {
+        if (discard)
+            break;
+    } while (false);
+
+    qdr_field_free(address_hash);
+}
+
+
+static void qdr_unmap_uplink_CT(qdr_core_t *core, qdr_action_t *action, bool discard)
+{
+    qdr_field_t *address_hash = action->args.route_table.address;
+
+    do {
+        if (discard)
+            break;
+    } while (false);
+
+    qdr_field_free(address_hash);
+}
+
+
+static void qdr_map_edge_CT(qdr_core_t *core, qdr_action_t *action, bool discard)
+{
+    qdr_field_t *address_hash = action->args.route_table.address;
+    qdr_field_t *edge_address = action->args.route_table.link_id;
+
+    do {
+        if (discard)
+            break;
+    } while (false);
+
+    qdr_field_free(address_hash);
+    qdr_field_free(edge_address);
+}
+
+
+static void qdr_unmap_edge_CT(qdr_core_t *core, qdr_action_t *action, bool discard)
+{
+    qdr_field_t *address_hash = action->args.route_table.address;
+    qdr_field_t *edge_address = action->args.route_table.link_id;
+
+    do {
+        if (discard)
+            break;
+    } while (false);
+
+    qdr_field_free(address_hash);
+    qdr_field_free(edge_address);
+}
+
 
 
 static void qdr_subscribe_CT(qdr_core_t *core, qdr_action_t *action, bool discard)

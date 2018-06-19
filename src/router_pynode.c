@@ -71,12 +71,13 @@ static PyObject* qd_del_router(PyObject *self, PyObject *args)
 {
     RouterAdapter *adapter = (RouterAdapter*) self;
     qd_router_t   *router  = adapter->router;
-    int router_maskbit;
+    const char    *address;
+    int            router_maskbit;
 
-    if (!PyArg_ParseTuple(args, "i", &router_maskbit))
+    if (!PyArg_ParseTuple(args, "si", &address, &router_maskbit))
         return 0;
 
-    qdr_core_del_router(router->router_core, router_maskbit);
+    qdr_core_del_router(router->router_core, address);
     if (router_maskbit > -1)
         qd_tracemask_del_router(router->tracemask, router_maskbit);
 
@@ -292,6 +293,95 @@ static PyObject* qd_unmap_destination(PyObject *self, PyObject *args)
     return Py_None;
 }
 
+
+static PyObject *qd_set_uplink(PyObject *self, PyObject *args)
+{
+    RouterAdapter *adapter = (RouterAdapter*) self;
+    qd_router_t   *router  = adapter->router;
+    const char    *address;
+
+    if (!PyArg_ParseTuple(args, "s", &address))
+        return 0;
+
+    qdr_core_set_uplink(router->router_core, address);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+
+static PyObject *qd_remove_uplink(PyObject *self, PyObject *args)
+{
+    RouterAdapter *adapter = (RouterAdapter*) self;
+    qd_router_t   *router  = adapter->router;
+
+    qdr_core_remove_uplink(router->router_core);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+
+static PyObject *qd_map_uplink(PyObject *self, PyObject *args)
+{
+    RouterAdapter *adapter = (RouterAdapter*) self;
+    qd_router_t   *router  = adapter->router;
+    const char    *address;
+
+    if (!PyArg_ParseTuple(args, "s", &address))
+        return 0;
+
+    qdr_core_map_uplink(router->router_core, address);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+
+static PyObject *qd_unmap_uplink(PyObject *self, PyObject *args)
+{
+    RouterAdapter *adapter = (RouterAdapter*) self;
+    qd_router_t   *router  = adapter->router;
+    const char    *address;
+
+    if (!PyArg_ParseTuple(args, "s", &address))
+        return 0;
+
+    qdr_core_unmap_uplink(router->router_core, address);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+
+static PyObject *qd_map_edge(PyObject *self, PyObject *args)
+{
+    RouterAdapter *adapter = (RouterAdapter*) self;
+    qd_router_t   *router  = adapter->router;
+    const char    *address;
+    const char    *edge;
+
+    if (!PyArg_ParseTuple(args, "ss", &address, &edge))
+        return 0;
+
+    qdr_core_map_edge(router->router_core, address, edge);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+
+static PyObject *qd_unmap_edge(PyObject *self, PyObject *args)
+{
+    RouterAdapter *adapter = (RouterAdapter*) self;
+    qd_router_t   *router  = adapter->router;
+    const char    *address;
+    const char    *edge;
+
+    if (!PyArg_ParseTuple(args, "ss", &address, &edge))
+        return 0;
+
+    qdr_core_unmap_edge(router->router_core, address, edge);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+
 static PyObject* qd_get_agent(PyObject *self, PyObject *args) {
     RouterAdapter *adapter = (RouterAdapter*) self;
     PyObject *agent = adapter->router->qd->agent;
@@ -314,6 +404,12 @@ static PyMethodDef RouterAdapter_methods[] = {
     {"set_radius",          qd_set_radius,        METH_VARARGS, "Set the current topology radius"},
     {"map_destination",     qd_map_destination,   METH_VARARGS, "Add a newly discovered destination mapping"},
     {"unmap_destination",   qd_unmap_destination, METH_VARARGS, "Delete a destination mapping"},
+    {"set_uplink",          qd_set_uplink,        METH_VARARGS, "Set the uplink router"},
+    {"remove_uplink",       qd_remove_uplink,     METH_VARARGS, "Remove the uplink router"},
+    {"map_uplink",          qd_map_uplink,        METH_VARARGS, "Map an address to the uplink"},
+    {"unmap_uplink",        qd_unmap_uplink,      METH_VARARGS, "Remove an uplink mapping"},
+    {"map_edge",            qd_map_edge,          METH_VARARGS, "Map an address to an edge router"},
+    {"unmap_edge",          qd_unmap_edge,        METH_VARARGS, "Remove an edge mapping"},
     {"get_agent",           qd_get_agent,         METH_VARARGS, "Get the management agent"},
     {0, 0, 0, 0}
 };

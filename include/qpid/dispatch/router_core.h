@@ -64,7 +64,7 @@ void qdr_core_free(qdr_core_t *core);
  ******************************************************************************
  */
 void qdr_core_add_router(qdr_core_t *core, const char *address, int router_maskbit);
-void qdr_core_del_router(qdr_core_t *core, int router_maskbit);
+void qdr_core_del_router(qdr_core_t *core, const char *address);
 void qdr_core_set_link(qdr_core_t *core, int router_maskbit, const char *link_id);
 void qdr_core_remove_link(qdr_core_t *core, int router_maskbit);
 void qdr_core_set_next_hop(qdr_core_t *core, int router_maskbit, int nh_router_maskbit);
@@ -73,6 +73,13 @@ void qdr_core_set_cost(qdr_core_t *core, int router_maskbit, int cost);
 void qdr_core_set_valid_origins(qdr_core_t *core, int router_maskbit, qd_bitmask_t *routers);
 void qdr_core_map_destination(qdr_core_t *core, int router_maskbit, const char *address_hash);
 void qdr_core_unmap_destination(qdr_core_t *core, int router_maskbit, const char *address_hash);
+
+void qdr_core_set_uplink(qdr_core_t *core, const char *address_hash);
+void qdr_core_remove_uplink(qdr_core_t *core);
+void qdr_core_map_uplink(qdr_core_t *core, const char *address_hash);
+void qdr_core_unmap_uplink(qdr_core_t *core, const char *address_hash);
+void qdr_core_map_edge(qdr_core_t *core, const char *address_hash, const char *edge_address);
+void qdr_core_unmap_edge(qdr_core_t *core, const char *address_hash, const char *edge_address);
 
 typedef void (*qdr_mobile_added_t)   (void *context, const char *address_hash);
 typedef void (*qdr_mobile_removed_t) (void *context, const char *address_hash);

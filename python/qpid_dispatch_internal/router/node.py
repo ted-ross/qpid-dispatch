@@ -77,8 +77,26 @@ class NodeTracker(object):
         })
 
 
+    def _check_active_uplink(self, node, node_id, cost):
+        if self.edge_mode and self.chosen_uplink != node_id:
+            if self.chosen_uplink_cost == None or cost < self.chosen_uplink_cost:
+                if self.chosen_uplink:
+                    old_node = self.nodes.get(self.chosen_uplink)
+                    if old_node:
+                        old_node.cancel_active_uplink()
+                self.chosen_uplink      = node_id
+                self.chosen_uplink_cost = cost
+                self.container.hello_protocol.set_chosen_uplink(node_id)
+                self.container.log(LOG_INFO, "Activated Lowest-Cost Edge Uplink to %s, cost=%d" % (node_id, cost))
+                node.make_active_uplink()
+
+
     def _check_lost_uplink(self, node_id):
         if node_id == self.chosen_uplink:
+            if self.chosen_uplink:
+                old_node = self.nodes.get(self.chosen_uplink)
+                if old_node:
+                    old_node.cancel_active_uplink()
             self.chosen_uplink      = None
             self.chosen_uplink_cost = None
             self.container.hello_protocol.set_chosen_uplink(None)
@@ -237,16 +255,6 @@ class NodeTracker(object):
             node.version = version
 
         ##
-        ## If we are in edge-router mode, keep track of the chosen uplink based on cost.
-        ##
-        if self.edge_mode and self.chosen_uplink != node_id:
-            if self.chosen_uplink_cost == None or cost < self.chosen_uplink_cost:
-                self.chosen_uplink      = node_id
-                self.chosen_uplink_cost = cost
-                self.container.hello_protocol.set_chosen_uplink(node_id)
-                self.container.log(LOG_INFO, "Activated Lowest-Cost Edge Uplink to %s, cost=%d" % (node_id, cost))
-
-        ##
         ## Set the link_id to indicate this is a neighbor router.  If the link_id
         ## changed, update the index and add the neighbor to the local link state.
         ##
@@ -260,6 +268,11 @@ class NodeTracker(object):
         ## Update the refresh time for later expiration checks
         ##
         node.neighbor_refresh_time = now
+
+        ##
+        ## If we are in edge-router mode, keep track of the chosen uplink based on cost.
+        ##
+        self._check_active_uplink(node, node_id, cost)
 
         ##
         ## If the instance was updated (i.e. the neighbor restarted suddenly),
@@ -468,15 +481,23 @@ class RouterNode(object):
         return "%s;class=%c" % (addr[1:], cls)
 
 
+    def make_active_uplink(self):
+        self.adapter.set_uplink(self.address_hash)
+
+
+    def cancel_active_uplink(self):
+        self.adapter.remove_uplink()
+
+
     def set_link_id(self, link_id, link_maskbit):
         if self.peer_link_id == link_id:
             return False
         self.peer_link_id      = link_id
         self.peer_link_maskbit = link_maskbit
-        if link_maskbit == -1:
-            return False
         self.next_hop_router = None
         self.adapter.set_link(self.maskbit, link_id, link_maskbit)
+        if link_maskbit == -1:
+            return False
         self.adapter.remove_next_hop(self.maskbit)
         self.log(LOG_TRACE, "Node %s link set: link_id=%r (removed next hop)" % (self.id, link_id))
         return True
@@ -485,15 +506,14 @@ class RouterNode(object):
     def remove_link(self):
         if self.peer_link_id is not None:
             self.peer_link_id = None
-            if self.peer_link_maskbit >= 0:
-                self.adapter.remove_link(self.maskbit)
-                self.log(LOG_TRACE, "Node %s link removed" % self.id)
+            self.adapter.remove_link(self.maskbit)
+            self.log(LOG_TRACE, "Node %s link removed" % self.id)
 
 
     def delete(self):
         self.adapter.get_agent().remove_implementation(self)
         self.unmap_all_addresses()
-        self.adapter.del_router(self.maskbit)
+        self.adapter.del_router(self.address_hash, self.maskbit)
         self.parent._free_maskbit(self.maskbit)
         self.log(LOG_TRACE, "Node %s deleted" % self.id)
 
@@ -621,7 +641,7 @@ class RouterNode(object):
         self.link_state.del_all_peers()
         self.unmap_all_addresses()
         self.log(LOG_INFO, "Detected Restart of Router Node %s" % self.id)
-        if self.peer_link_id == -1:
+        if self.peer_link_maskbit == -1:
             return False
         return True
 

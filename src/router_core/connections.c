@@ -719,7 +719,10 @@ static void qdr_link_cleanup_deliveries_CT(qdr_core_t *core, qdr_connection_t *c
         DEQ_REMOVE_HEAD(unsettled);
 
         if (dlv->tracking_addr) {
-            dlv->tracking_addr->outstanding_deliveries[dlv->tracking_addr_bit]--;
+            if (core->router_mode == QD_ROUTER_MODE_INTERIOR)
+                dlv->tracking_addr->balanced.interior_outstanding_deliveries[dlv->tracking_addr_bit]--;
+            else if (core->router_mode == QD_ROUTER_MODE_EDGE)
+                dlv->tracking_addr->balanced.uplink_outstanding_deliveries--;
             dlv->tracking_addr->tracked_deliveries--;
 
             if (dlv->tracking_addr->tracked_deliveries == 0)
@@ -1441,14 +1444,7 @@ static void qdr_attach_out_link_data_CT(qdr_core_t *core, qdr_connection_t *conn
         conn->link_set->data_link = link;
 
     if (conn->role == QDR_ROLE_EDGE_UPLINK) {
-        if (core->router_mode == QD_ROUTER_MODE_EDGE) {
-            //
-            // Associate this link with the uplink address.
-            //
-            link->owning_addr = core->uplink_addr;
-            qdr_add_link_ref(&core->uplink_addr->rlinks, link, QDR_LINK_LIST_CLASS_ADDRESS);
-            qd_log(core->log, QD_LOG_INFO, "Edge-uplink established to interior router: %s", conn->connection_info->container);
-        } else if (core->router_mode == QD_ROUTER_MODE_INTERIOR) {
+        if (core->router_mode == QD_ROUTER_MODE_INTERIOR) {
             //
             // This is a down-link to an edge router.  Create a mobile address of the form
             // H<edge-router-id>, associate the link to that address, and advertise
