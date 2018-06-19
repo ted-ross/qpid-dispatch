@@ -393,8 +393,8 @@ void qdr_core_remove_address(qdr_core_t *core, qdr_address_t *addr)
     if (addr->treatment == QD_TREATMENT_ANYCAST_CLOSEST) {
         qd_bitmask_free(addr->closest_remotes);
     }
-    else if (addr->treatment == QD_TREATMENT_ANYCAST_BALANCED) {
-        free(addr->outstanding_deliveries);
+    else if (addr->treatment == QD_TREATMENT_ANYCAST_BALANCED && core->router_mode == QD_ROUTER_MODE_INTERIOR) {
+        free(addr->balanced.interior_outstanding_deliveries);
     }
     free_qdr_address_t(addr);
 }

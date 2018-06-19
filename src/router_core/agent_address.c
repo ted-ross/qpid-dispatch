@@ -154,17 +154,28 @@ static void qdr_insert_address_columns_CT(qdr_core_t          *core,
         break;
 
     case QDR_ADDRESS_TRANSIT_OUTSTANDING:
-        if (addr->outstanding_deliveries) {
-            qd_compose_start_list(body);
-            for (int i = 0; i < qd_bitmask_width(); i++)
-                qd_compose_insert_long(body, addr->outstanding_deliveries[i]);
-            qd_compose_end_list(body);
-        } else
-            qd_compose_insert_null(body);
+        if (addr->treatment == QD_TREATMENT_ANYCAST_BALANCED) {
+            if (core->router_mode == QD_ROUTER_MODE_INTERIOR) {
+                if (addr->balanced.interior_outstanding_deliveries) {
+                    qd_compose_start_list(body);
+                    for (int i = 0; i < qd_bitmask_width(); i++)
+                        qd_compose_insert_long(body, addr->balanced.interior_outstanding_deliveries[i]);
+                    qd_compose_end_list(body);
+                }
+                break;
+            } else if (core->router_mode == QD_ROUTER_MODE_EDGE) {
+                qd_compose_insert_long(body, addr->balanced.uplink_outstanding_deliveries);
+                break;
+            }
+        }
+        qd_compose_insert_null(body);
         break;
 
     case QDR_ADDRESS_TRACKED_DELIVERIES:
-        qd_compose_insert_long(body, addr->tracked_deliveries);
+        if (addr->treatment == QD_TREATMENT_ANYCAST_BALANCED)
+            qd_compose_insert_long(body, addr->tracked_deliveries);
+        else
+            qd_compose_insert_null(body);
         break;
 
     default:

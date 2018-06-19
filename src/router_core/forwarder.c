@@ -340,6 +340,18 @@ int qdr_forward_multicast_CT(qdr_core_t      *core,
         }
     }
 
+    //
+    // Forward to the uplink if there are destinations there.
+    //
+    if (addr->via_uplink && core->uplink_router) {
+        qdr_link_t *dest_link = control ? PEER_CONTROL_LINK(core->uplink_router) : PEER_DATA_LINK(core->uplink_router);
+        qdr_delivery_t *out_delivery = qdr_forward_new_delivery_CT(core, in_delivery, dest_link, msg);
+        qdr_forward_deliver_CT(core, dest_link, out_delivery);
+        fanout++;
+        addr->deliveries_transit++;
+        core->deliveries_transit++;
+    }
+
     if (!exclude_inprocess) {
         //
         // Forward to in-process subscribers
@@ -477,6 +489,24 @@ int qdr_forward_closest_CT(qdr_core_t      *core,
     }
 
     //
+    // If this is an edge router and the address has consumers via the uplink,
+    // send the delivery up the uplink.
+    //
+    if (core->router_mode == QD_ROUTER_MODE_EDGE) {
+        if (addr->via_uplink && core->uplink_router) {
+            out_link = control ? PEER_CONTROL_LINK(core->uplink_router) : PEER_DATA_LINK(core->uplink_router);
+            if (out_link) {
+                out_delivery = qdr_forward_new_delivery_CT(core, in_delivery, out_link, msg);
+                qdr_forward_deliver_CT(core, out_link, out_delivery);
+                addr->deliveries_transit++;
+                core->deliveries_transit++;
+                return 1;
+            }
+        }
+        return 0;
+    }
+
+    //
     // If the cached list of closest remotes is stale (i.e. cost data has changed),
     // recompute the closest remote routers.
     //
@@ -531,18 +561,25 @@ int qdr_forward_balanced_CT(qdr_core_t      *core,
     //
     // If this is the first time through here, allocate the array for outstanding delivery counts.
     //
-    if (addr->outstanding_deliveries == 0) {
-        addr->outstanding_deliveries = NEW_ARRAY(int, qd_bitmask_width());
-        for (int i = 0; i < qd_bitmask_width(); i++)
-            addr->outstanding_deliveries[i] = 0;
+    if (!addr->balanced_initialized) {
+        addr->balanced_initialized = true;
+        if (core->router_mode == QD_ROUTER_MODE_INTERIOR) {
+            addr->balanced.interior_outstanding_deliveries = NEW_ARRAY(int, qd_bitmask_width());
+            for (int i = 0; i < qd_bitmask_width(); i++)
+                addr->balanced.interior_outstanding_deliveries[i] = 0;
+        } else if (core->router_mode == QD_ROUTER_MODE_EDGE)
+            addr->balanced.uplink_outstanding_deliveries = 0;
     }
 
-    qdr_link_t *best_eligible_link       = 0;
-    int         best_eligible_link_bit   = -1;
-    uint32_t    eligible_link_value      = UINT32_MAX;
-    qdr_link_t *best_ineligible_link     = 0;
-    int         best_ineligible_link_bit = -1;
-    uint32_t    ineligible_link_value    = UINT32_MAX;
+    qdr_link_t *best_eligible_link              = 0;
+    int         best_eligible_link_bit          = -1;
+    uint32_t    eligible_link_value             = UINT32_MAX;
+    qdr_link_t *best_ineligible_link            = 0;
+    int         best_ineligible_link_bit        = -1;
+    uint32_t    ineligible_link_value           = UINT32_MAX;
+    bool        best_eligible_is_local          = false;
+    bool        best_eligible_is_inter_router   = false;
+    bool        best_ineligible_is_inter_router = false;
 
     //
     // Find all the possible outbound links for this delivery, searching for the one with the
@@ -568,8 +605,9 @@ int qdr_forward_balanced_CT(qdr_core_t      *core,
         // Otherwise, if this is the best ineligible link, make note of that.
         //
         if (eligible && eligible_link_value > value) {
-            best_eligible_link  = link;
-            eligible_link_value = value;
+            best_eligible_link     = link;
+            eligible_link_value    = value;
+            best_eligible_is_local = true;
         } else if (!eligible && ineligible_link_value > value) {
             best_ineligible_link  = link;
             ineligible_link_value = value;
@@ -583,54 +621,89 @@ int qdr_forward_balanced_CT(qdr_core_t      *core,
     // inter-router links as well.
     //
     if (!best_eligible_link || eligible_link_value > 0) {
-        //
-        // Get the mask bit associated with the ingress router for the message.
-        // This will be compared against the "valid_origin" masks for each
-        // candidate destination router.
-        //
-        int origin = 0;
-        qd_iterator_t *ingress_iter = in_delivery ? in_delivery->origin : 0;
+        if (core->router_mode == QD_ROUTER_MODE_INTERIOR) {
+            //
+            // Find the best links among the inter-router links
+            //
 
-        if (ingress_iter) {
-            qd_iterator_reset_view(ingress_iter, ITER_VIEW_NODE_HASH);
-            qdr_address_t *origin_addr;
-            qd_hash_retrieve(core->addr_hash, ingress_iter, (void*) &origin_addr);
-            if (origin_addr && qd_bitmask_cardinality(origin_addr->rnodes) == 1)
-                qd_bitmask_first_set(origin_addr->rnodes, &origin);
-        }
+            //
+            // Get the mask bit associated with the ingress router for the message.
+            // This will be compared against the "valid_origin" masks for each
+            // candidate destination router.
+            //
+            int origin = 0;
+            qd_iterator_t *ingress_iter = in_delivery ? in_delivery->origin : 0;
 
-        int c;
-        int node_bit;
-        for (QD_BITMASK_EACH(addr->rnodes, node_bit, c)) {
-            qdr_node_t *rnode     = core->routers_by_mask_bit[node_bit];
-            qdr_node_t *next_node = rnode->next_hop ? rnode->next_hop : rnode;
-            qdr_link_t *link      = PEER_DATA_LINK(next_node);
-            if (!link) continue;
-            int         link_bit  = link->conn->link_set ? link->conn->link_set->mask_bit : -1;
-            int         value     = addr->outstanding_deliveries[link_bit];
-            bool        eligible  = link->capacity > value;
+            if (ingress_iter) {
+                qd_iterator_reset_view(ingress_iter, ITER_VIEW_NODE_HASH);
+                qdr_address_t *origin_addr;
+                qd_hash_retrieve(core->addr_hash, ingress_iter, (void*) &origin_addr);
+                if (origin_addr && qd_bitmask_cardinality(origin_addr->rnodes) == 1)
+                    qd_bitmask_first_set(origin_addr->rnodes, &origin);
+            }
 
-            if (qd_bitmask_value(rnode->valid_origins, origin)) {
-                //
-                // Link is a candidate, adjust the value by the bias (node cost).
-                //
-                value += rnode->cost;
-                if (eligible && eligible_link_value > value) {
-                    best_eligible_link     = link;
-                    best_eligible_link_bit = link_bit;
-                    eligible_link_value    = value;
-                } else if (!eligible && ineligible_link_value > value) {
-                    best_ineligible_link     = link;
-                    best_ineligible_link_bit = link_bit;
-                    ineligible_link_value    = value;
+            int c;
+            int node_bit;
+            for (QD_BITMASK_EACH(addr->rnodes, node_bit, c)) {
+                qdr_node_t *rnode     = core->routers_by_mask_bit[node_bit];
+                qdr_node_t *next_node = rnode->next_hop ? rnode->next_hop : rnode;
+                qdr_link_t *link      = PEER_DATA_LINK(next_node);
+                if (!link) continue;
+                int         link_bit  = link->conn->link_set ? link->conn->link_set->mask_bit : -1;
+                int         value     = addr->balanced.interior_outstanding_deliveries[link_bit];
+                bool        eligible  = link->capacity > value;
+
+                if (qd_bitmask_value(rnode->valid_origins, origin)) {
+                    //
+                    // Link is a candidate, adjust the value by the bias (node cost).
+                    //
+                    value += rnode->cost;
+                    if (eligible && eligible_link_value > value) {
+                        best_eligible_link            = link;
+                        best_eligible_link_bit        = link_bit;
+                        eligible_link_value           = value;
+                        best_eligible_is_local        = false;
+                        best_eligible_is_inter_router = true;
+                    } else if (!eligible && ineligible_link_value > value) {
+                        best_ineligible_link            = link;
+                        best_ineligible_link_bit        = link_bit;
+                        ineligible_link_value           = value;
+                        best_ineligible_is_inter_router = true;
+                    }
+                }
+            }
+        } else if (core->router_mode == QD_ROUTER_MODE_EDGE) {
+            //
+            // Check to see of the edge uplink is a better choice
+            //
+            if (addr->via_uplink && core->uplink_router) {
+                qdr_link_t *uplink = PEER_DATA_LINK(core->uplink_router);
+                if (uplink) {
+                    int  value    = addr->balanced.uplink_outstanding_deliveries;
+                    bool eligible = uplink->capacity > value;
+                    value += core->uplink_router->cost;
+                    if (eligible && eligible_link_value > value) {
+                        best_eligible_link            = uplink;
+                        best_eligible_link_bit        = -1;
+                        eligible_link_value           = value;
+                        best_eligible_is_local        = false;
+                        best_eligible_is_inter_router = true;
+                    } else if (!eligible && ineligible_link_value > value) {
+                        best_ineligible_link            = uplink;
+                        best_ineligible_link_bit        = -1;
+                        ineligible_link_value           = value;
+                        best_ineligible_is_inter_router = true;
+                    }
                 }
             }
         }
-    } else if (best_eligible_link) {
-        //
-        // Rotate the rlinks list to enhance the appearance of balance when there is
-        // little load (see DISPATCH-367)
-        //
+    }
+
+    //
+    // Rotate the rlinks list to enhance the appearance of balance when there is
+    // little load (see DISPATCH-367)
+    //
+    if (best_eligible_is_local) {
         if (DEQ_SIZE(addr->rlinks) > 1) {
             link_ref = DEQ_HEAD(addr->rlinks);
             DEQ_REMOVE_HEAD(addr->rlinks);
@@ -638,15 +711,18 @@ int qdr_forward_balanced_CT(qdr_core_t      *core,
         }
     }
 
-    qdr_link_t *chosen_link     = 0;
-    int         chosen_link_bit = -1;
+    qdr_link_t *chosen_link            = 0;
+    int         chosen_link_bit        = -1;
+    bool        chosen_is_inter_router = false;
 
     if (best_eligible_link) {
-        chosen_link     = best_eligible_link;
-        chosen_link_bit = best_eligible_link_bit;
+        chosen_link            = best_eligible_link;
+        chosen_link_bit        = best_eligible_link_bit;
+        chosen_is_inter_router = best_eligible_is_inter_router;
     } else if (best_ineligible_link) {
-        chosen_link     = best_ineligible_link;
-        chosen_link_bit = best_ineligible_link_bit;
+        chosen_link            = best_ineligible_link;
+        chosen_link_bit        = best_ineligible_link_bit;
+        chosen_is_inter_router = best_ineligible_is_inter_router;
     }
 
     if (chosen_link) {
@@ -656,8 +732,11 @@ int qdr_forward_balanced_CT(qdr_core_t      *core,
         //
         // If the delivery is unsettled and the link is inter-router, account for the outstanding delivery.
         //
-        if (in_delivery && !in_delivery->settled && chosen_link_bit >= 0) {
-            addr->outstanding_deliveries[chosen_link_bit]++;
+        if (in_delivery && !in_delivery->settled && chosen_is_inter_router) {
+            if (core->router_mode == QD_ROUTER_MODE_INTERIOR)
+                addr->balanced.interior_outstanding_deliveries[chosen_link_bit]++;
+            else
+                addr->balanced.uplink_outstanding_deliveries++;
             out_delivery->tracking_addr     = addr;
             out_delivery->tracking_addr_bit = chosen_link_bit;
             addr->tracked_deliveries++;
@@ -666,7 +745,7 @@ int qdr_forward_balanced_CT(qdr_core_t      *core,
         //
         // Bump the appropriate counter based on where we sent the delivery.
         //
-        if (chosen_link_bit >= 0) {
+        if (chosen_is_inter_router) {
             addr->deliveries_transit++;
             core->deliveries_transit++;
         }

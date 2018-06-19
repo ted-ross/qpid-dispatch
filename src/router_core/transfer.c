@@ -469,7 +469,10 @@ bool qdr_delivery_settled_CT(qdr_core_t *core, qdr_delivery_t *dlv)
         sys_mutex_unlock(conn->work_lock);
 
     if (dlv->tracking_addr) {
-        dlv->tracking_addr->outstanding_deliveries[dlv->tracking_addr_bit]--;
+        if (core->router_mode == QD_ROUTER_MODE_INTERIOR)
+            dlv->tracking_addr->balanced.interior_outstanding_deliveries[dlv->tracking_addr_bit]--;
+        else if (core->router_mode == QD_ROUTER_MODE_EDGE)
+            dlv->tracking_addr->balanced.uplink_outstanding_deliveries--;
         dlv->tracking_addr->tracked_deliveries--;
 
         if (dlv->tracking_addr->tracked_deliveries == 0)
@@ -513,7 +516,10 @@ static void qdr_delete_delivery_internal_CT(qdr_core_t *core, qdr_delivery_t *de
     }
 
     if (delivery->tracking_addr) {
-        delivery->tracking_addr->outstanding_deliveries[delivery->tracking_addr_bit]--;
+        if (core->router_mode == QD_ROUTER_MODE_INTERIOR)
+            delivery->tracking_addr->balanced.interior_outstanding_deliveries[delivery->tracking_addr_bit]--;
+        else
+            delivery->tracking_addr->balanced.uplink_outstanding_deliveries--;
         delivery->tracking_addr->tracked_deliveries--;
 
         if (delivery->tracking_addr->tracked_deliveries == 0)

@@ -314,6 +314,7 @@ void qdr_router_node_free(qdr_core_t *core, qdr_node_t *rnode);
 struct qdr_router_ref_t {
     DEQ_LINKS(qdr_router_ref_t);
     qdr_node_t *router;
+    int         outstanding;
 };
 
 ALLOC_DECLARE(qdr_router_ref_t);
@@ -467,15 +468,18 @@ struct qdr_address_t {
     qdr_connection_ref_list_t  conns;         ///< Local Connections for route-destinations
     qdr_link_ref_list_t        rlinks;        ///< Locally-Connected Consumers
     qdr_link_ref_list_t        inlinks;       ///< Locally-Connected Producers
-    qd_bitmask_t              *rnodes;        ///< Bitmask of remote routers with connected consumers
+    qd_bitmask_t              *rnodes;        ///< Bitmask of remote interior routers with connected consumers
+    qdr_router_ref_list_t      edge_nodes;    ///< Reference list of remote edge routers with connected consumers
     qd_hash_handle_t          *hash_handle;   ///< Linkage back to the hash table entry
     qd_address_treatment_t     treatment;
     qdr_forwarder_t           *forwarder;
     int                        ref_count;     ///< Number of link-routes + auto-links referencing this address
     bool                       block_deletion;
     bool                       local;
+    bool                       via_uplink;    ///< This address has destinations via the edge-uplink
     uint32_t                   tracked_deliveries;
     uint64_t                   cost_epoch;
+    qdr_node_t                *owned_node;
 
     //
     // State for "closest" treatment
@@ -486,12 +490,16 @@ struct qdr_address_t {
     //
     // State for "balanced" treatment
     //
-    int *outstanding_deliveries;
+    bool balanced_initialized;
+    union {
+        int *interior_outstanding_deliveries;  ///< Array of counts per interior router (interior mode)
+        int  uplink_outstanding_deliveries;    ///< Count for the uplink (edge mode)
+    } balanced;
 
     //
     // State for "exchange" treatment
     //
-    qdr_exchange_t      *exchange;  // weak ref
+    qdr_exchange_t *exchange;  // weak ref
 
     /**@name Statistics */
     ///@{
