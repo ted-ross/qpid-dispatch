@@ -90,14 +90,15 @@ static PyObject* qd_set_link(PyObject *self, PyObject *args)
 {
     RouterAdapter *adapter = (RouterAdapter*) self;
     qd_router_t   *router  = adapter->router;
+    const char    *address;
     int            router_maskbit;
     const char    *link_id;
     int            link_maskbit;
 
-    if (!PyArg_ParseTuple(args, "isi", &router_maskbit, &link_id, &link_maskbit))
+    if (!PyArg_ParseTuple(args, "sisi", &address, &router_maskbit, &link_id, &link_maskbit))
         return 0;
 
-    qdr_core_set_link(router->router_core, router_maskbit, link_id);
+    qdr_core_set_link(router->router_core, address, router_maskbit, link_id);
     if (router_maskbit > -1)
         qd_tracemask_set_link(router->tracemask, router_maskbit, link_maskbit);
 
@@ -110,12 +111,13 @@ static PyObject* qd_remove_link(PyObject *self, PyObject *args)
 {
     RouterAdapter *adapter = (RouterAdapter*) self;
     qd_router_t   *router  = adapter->router;
+    const char    *address;
     int            router_maskbit;
 
-    if (!PyArg_ParseTuple(args, "i", &router_maskbit))
+    if (!PyArg_ParseTuple(args, "si", &address, &router_maskbit))
         return 0;
 
-    qdr_core_remove_link(router->router_core, router_maskbit);
+    qdr_core_remove_link(router->router_core, address, router_maskbit);
     if (router_maskbit > -1)
         qd_tracemask_remove_link(router->tracemask, router_maskbit);
 
@@ -299,11 +301,12 @@ static PyObject *qd_set_uplink(PyObject *self, PyObject *args)
     RouterAdapter *adapter = (RouterAdapter*) self;
     qd_router_t   *router  = adapter->router;
     const char    *address;
+    const char    *link_id;
 
-    if (!PyArg_ParseTuple(args, "s", &address))
+    if (!PyArg_ParseTuple(args, "ss", &address, &link_id))
         return 0;
 
-    qdr_core_set_uplink(router->router_core, address);
+    qdr_core_set_uplink(router->router_core, address, link_id);
     Py_INCREF(Py_None);
     return Py_None;
 }

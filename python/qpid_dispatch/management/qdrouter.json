@@ -1492,6 +1492,10 @@
                 "trackedDeliveries": {
                     "type": "integer",
                     "description": "Number of transit deliveries being tracked for this address (for balanced distribution)."
+                },
+                "viaUplink": {
+                    "type": "boolean",
+                    "description": "True if there are consumers for this address via the edge uplink (relevant on edge routers only)."
                 }
             }
         },

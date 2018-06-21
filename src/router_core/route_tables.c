@@ -62,18 +62,20 @@ void qdr_core_del_router(qdr_core_t *core, const char *address)
 }
 
 
-void qdr_core_set_link(qdr_core_t *core, int router_maskbit, const char *link_id)
+void qdr_core_set_link(qdr_core_t *core, const char *address, int router_maskbit, const char *link_id)
 {
     qdr_action_t *action = qdr_action(qdr_set_link_CT, "set_link");
+    action->args.route_table.address        = qdr_field(address);
     action->args.route_table.router_maskbit = router_maskbit;
     action->args.route_table.link_id        = qdr_field(link_id);
     qdr_action_enqueue(core, action);
 }
 
 
-void qdr_core_remove_link(qdr_core_t *core, int router_maskbit)
+void qdr_core_remove_link(qdr_core_t *core, const char *address, int router_maskbit)
 {
     qdr_action_t *action = qdr_action(qdr_remove_link_CT, "remove_link");
+    action->args.route_table.address        = qdr_field(address);
     action->args.route_table.router_maskbit = router_maskbit;
     qdr_action_enqueue(core, action);
 }
@@ -132,10 +134,11 @@ void qdr_core_unmap_destination(qdr_core_t *core, int router_maskbit, const char
 }
 
 
-void qdr_core_set_uplink(qdr_core_t *core, const char *address_hash)
+void qdr_core_set_uplink(qdr_core_t *core, const char *address_hash, const char *link_id)
 {
     qdr_action_t *action = qdr_action(qdr_set_uplink_CT, "set_uplink");
     action->args.route_table.address = qdr_field(address_hash);
+    action->args.route_table.link_id = qdr_field(link_id);
     qdr_action_enqueue(core, action);
 }
 
@@ -465,24 +468,28 @@ static void qdr_del_router_CT(qdr_core_t *core, qdr_action_t *action, bool disca
 
 static void qdr_set_link_CT(qdr_core_t *core, qdr_action_t *action, bool discard)
 {
-    int          router_maskbit = action->args.route_table.router_maskbit;
-    qdr_field_t *link_id        = action->args.route_table.link_id;
+    qdr_field_t *address = action->args.route_table.address;
+    qdr_field_t *link_id = action->args.route_table.link_id;
 
     do {
         if (discard)
             break;
 
-        if (router_maskbit >= qd_bitmask_width() || router_maskbit < -1) {
-            qd_log(core->log, QD_LOG_CRITICAL, "set_link: Router maskbit out of range: %d", router_maskbit);
-            break;
-        }
+        //
+        // Hash lookup the router address.
+        //
+        qd_iterator_t *iter = address->iterator;
+        qdr_address_t *addr;
 
-        if (router_maskbit != -1 && core->routers_by_mask_bit[router_maskbit] == 0) {
+        qd_iterator_reset_view(iter, ITER_VIEW_ALL);
+        qd_hash_retrieve(core->addr_hash, iter, (void**) &addr);
+
+        if (!addr) {
             qd_log(core->log, QD_LOG_CRITICAL, "set_link: Router not found");
             break;
         }
 
-        qd_iterator_t  *iter     = link_id->iterator;
+        iter = link_id->iterator;
         qdr_link_set_t *link_set = 0;
 
         qd_hash_retrieve(core->addr_hash, iter, (void**) &link_set);
@@ -496,33 +503,67 @@ static void qdr_set_link_CT(qdr_core_t *core, qdr_action_t *action, bool discard
         //
         // Add the peer_link reference to the router record.
         //
-        qdr_node_t *rnode = router_maskbit > -1 ? core->routers_by_mask_bit[router_maskbit] : core->uplink_router;
+        qdr_node_t *rnode = addr->owned_node;
         if (rnode) {
             rnode->link_set = link_set;
             qdr_addr_start_inlinks_CT(core, rnode->owning_addr);
         }
+
+        //
+        // If this is an edge link, flag the address as reachable via-uplink and
+        // propagate the router address across the network.
+        //
+        const char *key = (const char*) qd_hash_key_by_handle(addr->hash_handle);
+        if (core->router_mode == QD_ROUTER_MODE_INTERIOR && *key == 'H') {
+            addr->via_uplink = true;
+            qdr_post_mobile_added_CT(core, key);
+            qdr_addr_start_inlinks_CT(core, addr);
+        }
     } while (false);
 
+    qdr_field_free(address);
     qdr_field_free(link_id);
 }
 
 
 static void qdr_remove_link_CT(qdr_core_t *core, qdr_action_t *action, bool discard)
 {
-    int router_maskbit = action->args.route_table.router_maskbit;
+    qdr_field_t *address = action->args.route_table.address;
 
-    if (router_maskbit >= qd_bitmask_width() || router_maskbit < 0) {
-        qd_log(core->log, QD_LOG_CRITICAL, "remove_link: Router maskbit out of range: %d", router_maskbit);
-        return;
-    }
+    do {
+        if (discard)
+            break;
 
-    if (core->routers_by_mask_bit[router_maskbit] == 0) {
-        qd_log(core->log, QD_LOG_CRITICAL, "remove_link: Router not found");
-        return;
-    }
+        //
+        // Hash lookup the router address.
+        //
+        qd_iterator_t *iter = address->iterator;
+        qdr_address_t *addr;
 
-    qdr_node_t *rnode = core->routers_by_mask_bit[router_maskbit];
-    rnode->link_set = 0;
+        qd_iterator_reset_view(iter, ITER_VIEW_ALL);
+        qd_hash_retrieve(core->addr_hash, iter, (void**) &addr);
+
+        if (!addr) {
+            qd_log(core->log, QD_LOG_CRITICAL, "remove_link: Router not found");
+            break;
+        }
+
+        qdr_node_t *rnode = addr->owned_node;
+        if (rnode)
+            rnode->link_set = 0;
+
+        //
+        // If this is an edge link, remove the via-uplink flag and propagate
+        // the removal of this addresses across the network.
+        //
+        const char *key = (const char*) qd_hash_key_by_handle(addr->hash_handle);
+        if (core->router_mode == QD_ROUTER_MODE_INTERIOR && *key == 'H') {
+            addr->via_uplink = 0;
+            qdr_post_mobile_removed_CT(core, key);
+        }
+    } while (false);
+
+    qdr_field_free(address);
 }
 
 
@@ -728,6 +769,7 @@ static void qdr_unmap_destination_CT(qdr_core_t *core, qdr_action_t *action, boo
 static void qdr_set_uplink_CT(qdr_core_t *core, qdr_action_t *action, bool discard)
 {
     qdr_field_t *address = action->args.route_table.address;
+    qdr_field_t *link_id = action->args.route_table.link_id;
 
     do {
         if (discard)
@@ -747,17 +789,36 @@ static void qdr_set_uplink_CT(qdr_core_t *core, qdr_action_t *action, bool disca
             break;
         }
 
-        core->uplink_router = addr->owned_node;
+        //
+        // Hash lookup the link-id
+        //
+        iter = link_id->iterator;
+        qdr_link_set_t *link_set;
+        qd_iterator_reset_view(iter, ITER_VIEW_ALL);
+        qd_hash_retrieve(core->addr_hash, iter, (void**) &link_set);
+
+        if (!link_set) {
+            qd_log(core->log, QD_LOG_CRITICAL, "set_uplink: Link-set not found");
+            break;
+        }
+
+        core->uplink_router           = addr->owned_node;
+        core->uplink_router->link_set = link_set;
     } while (false);
 
     qdr_field_free(address);
+    qdr_field_free(link_id);
 }
 
 
 static void qdr_remove_uplink_CT(qdr_core_t *core, qdr_action_t *action, bool discard)
 {
-    if (!discard)
-        core->uplink_router = 0;
+    if (!discard) {
+        if (core->uplink_router) {
+            core->uplink_router->link_set = 0;
+            core->uplink_router = 0;
+        }
+    }
 }
 
 

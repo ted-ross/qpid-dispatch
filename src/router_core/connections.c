@@ -1052,7 +1052,7 @@ void qdr_check_addr_CT(qdr_core_t *core, qdr_address_t *addr, bool was_local)
     //
     if (was_local && DEQ_SIZE(addr->rlinks) == 0) {
         const char *key = (const char*) qd_hash_key_by_handle(addr->hash_handle);
-        if (key && (*key == 'M' || *key == 'H'))
+        if (key && (*key == 'M'))
             qdr_post_mobile_removed_CT(core, key);
     }
 
@@ -1060,9 +1060,13 @@ void qdr_check_addr_CT(qdr_core_t *core, qdr_address_t *addr, bool was_local)
     // If the address has no in-process consumer or destinations, it should be
     // deleted.
     //
-    if (DEQ_SIZE(addr->subscriptions) == 0 && DEQ_SIZE(addr->rlinks) == 0 && DEQ_SIZE(addr->inlinks) == 0 &&
-        qd_bitmask_cardinality(addr->rnodes) == 0 && addr->ref_count == 0 && !addr->block_deletion &&
-        addr->tracked_deliveries == 0) {
+    if (DEQ_SIZE(addr->subscriptions) == 0 &&
+        DEQ_SIZE(addr->rlinks) == 0 && DEQ_SIZE(addr->inlinks) == 0 &&
+        qd_bitmask_cardinality(addr->rnodes) == 0 &&
+        addr->ref_count == 0 &&
+        !addr->block_deletion &&
+        addr->tracked_deliveries == 0 &&
+        !addr->via_uplink) {
         qdr_core_remove_address(core, addr);
     }
 }
@@ -1442,28 +1446,6 @@ static void qdr_attach_out_link_data_CT(qdr_core_t *core, qdr_connection_t *conn
 {
     if ((conn->role == QDR_ROLE_INTER_ROUTER || conn->role == QDR_ROLE_EDGE_UPLINK) && conn->link_set)
         conn->link_set->data_link = link;
-
-    if (conn->role == QDR_ROLE_EDGE_UPLINK) {
-        if (core->router_mode == QD_ROUTER_MODE_INTERIOR) {
-            //
-            // This is a down-link to an edge router.  Create a mobile address of the form
-            // H<edge-router-id>, associate the link to that address, and advertise
-            // the address on the network.
-            //
-            const char    *edge_id = conn->connection_info->container;
-            qdr_address_t *addr    = qdr_add_mobile_address_CT(core, "", edge_id, QD_TREATMENT_ANYCAST_BALANCED, true);
-            link->owning_addr = addr;
-            qdr_add_link_ref(&addr->rlinks, link, QDR_LINK_LIST_CLASS_ADDRESS);
-            if (DEQ_SIZE(addr->rlinks) == 1) {
-                const char *key = (const char*) qd_hash_key_by_handle(addr->hash_handle);
-                if (key && (*key == 'M' || *key == 'H'))
-                    qdr_post_mobile_added_CT(core, key);
-                qdr_addr_start_inlinks_CT(core, addr);
-            }
-
-            qd_log(core->log, QD_LOG_INFO, "Downlink established to edge router: %s", edge_id);
-        }
-    }
 }
 
 
@@ -1613,11 +1595,12 @@ static void qdr_link_inbound_first_attach_CT(qdr_core_t *core, qdr_action_t *act
                     // - if the address treatment is multicast
                     // - the address is that of an exchange (no subscribers allowed)
                     //
-                    if (DEQ_SIZE(addr->subscriptions)
-                            || DEQ_SIZE(addr->rlinks)
-                            || qd_bitmask_cardinality(addr->rnodes)
-                            || qdr_is_addr_treatment_multicast(addr)
-                            || !!addr->exchange) {
+                    if (DEQ_SIZE(addr->subscriptions) ||
+                        DEQ_SIZE(addr->rlinks) ||
+                        qd_bitmask_cardinality(addr->rnodes) ||
+                        addr->via_uplink ||
+                        qdr_is_addr_treatment_multicast(addr) ||
+                        !!addr->exchange) {
                         qdr_link_issue_credit_CT(core, link, link->capacity, false);
                     }
                 }

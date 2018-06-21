@@ -116,14 +116,14 @@ class NodeTracker(object):
             if node.is_neighbor():
                 if now - node.neighbor_refresh_time > self.neighbor_max_age:
                     node.remove_link()
-                    if self.link_state.del_peer(node_id):
+                    if not self.edge_mode and self.link_state.del_peer(node_id):
                         self.link_state_changed = True
                     self._check_lost_uplink(node_id)
 
             ##
             ## Check the age of the node's link state.  If it's too old, clear it out.
             ##
-            if now - node.link_state.last_seen > self.ls_max_age:
+            if not self.edge_mode and now - node.link_state.last_seen > self.ls_max_age:
                 if node.link_state.has_peers():
                     node.link_state.del_all_peers()
                     self.recompute_topology = True
@@ -132,7 +132,7 @@ class NodeTracker(object):
             ## If the node has empty link state, check to see if it appears in any other
             ## node's link state.  If it does not, then delete the node.
             ##
-            if not node.link_state.has_peers() and not node.is_neighbor():
+            if not self.edge_mode and not node.link_state.has_peers() and not node.is_neighbor():
                 delete_node = True
                 for _id, _n in self.nodes.items():
                     if _id != node_id:
@@ -261,7 +261,7 @@ class NodeTracker(object):
         if node.set_link_id(link_id, link_maskbit):
             self.nodes_by_link_id[link_id] = node
             node.request_link_state()
-            if self.link_state.add_peer(node_id, cost):
+            if not self.edge_mode and not node.is_edge and self.link_state.add_peer(node_id, cost):
                 self.link_state_changed = True
 
         ##
@@ -293,7 +293,7 @@ class NodeTracker(object):
             self.nodes_by_link_id.pop(link_id)
             node = self.nodes[node_id]
             node.remove_link()
-            if self.link_state.del_peer(node_id):
+            if not self.edge_mode and self.link_state.del_peer(node_id):
                 self.link_state_changed = True
             self._check_lost_uplink(node_id)
 
@@ -482,7 +482,7 @@ class RouterNode(object):
 
 
     def make_active_uplink(self):
-        self.adapter.set_uplink(self.address_hash)
+        self.adapter.set_uplink(self.address_hash, self.peer_link_id)
 
 
     def cancel_active_uplink(self):
@@ -494,20 +494,24 @@ class RouterNode(object):
             return False
         self.peer_link_id      = link_id
         self.peer_link_maskbit = link_maskbit
-        self.next_hop_router = None
-        self.adapter.set_link(self.maskbit, link_id, link_maskbit)
-        if link_maskbit == -1:
-            return False
-        self.adapter.remove_next_hop(self.maskbit)
-        self.log(LOG_TRACE, "Node %s link set: link_id=%r (removed next hop)" % (self.id, link_id))
+        self.next_hop_router   = None
+        self.adapter.set_link(self.address_hash, self.maskbit, link_id, link_maskbit)
+        if self.is_edge:
+            self.log(LOG_TRACE, "Downlink established to edge router %s, link_id=%r" % (self.id, link_id))
+        else:
+            self.adapter.remove_next_hop(self.maskbit)
+            self.log(LOG_TRACE, "Node %s link set: link_id=%r (removed next hop)" % (self.id, link_id))
         return True
 
 
     def remove_link(self):
         if self.peer_link_id is not None:
             self.peer_link_id = None
-            self.adapter.remove_link(self.maskbit)
-            self.log(LOG_TRACE, "Node %s link removed" % self.id)
+            self.adapter.remove_link(self.address_hash, self.maskbit)
+            if self.is_edge:
+                self.log(LOG_TRACE, "Downlink to edge router %s removed" % self.id)
+            else:
+                self.log(LOG_TRACE, "Node %s link removed" % self.id)
 
 
     def delete(self):
