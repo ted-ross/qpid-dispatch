@@ -343,13 +343,16 @@ int qdr_forward_multicast_CT(qdr_core_t      *core,
     //
     // Forward to the uplink if there are destinations there.
     //
-    if (addr->via_uplink && core->uplink_router) {
-        qdr_link_t *dest_link = control ? PEER_CONTROL_LINK(core->uplink_router) : PEER_DATA_LINK(core->uplink_router);
-        qdr_delivery_t *out_delivery = qdr_forward_new_delivery_CT(core, in_delivery, dest_link, msg);
-        qdr_forward_deliver_CT(core, dest_link, out_delivery);
-        fanout++;
-        addr->deliveries_transit++;
-        core->deliveries_transit++;
+    if (addr->via_uplink) {
+        qdr_node_t *enode = core->router_mode == QD_ROUTER_MODE_EDGE ? core->uplink_router : addr->owned_node;
+        if (enode) {
+            qdr_link_t     *dest_link    = control ? PEER_CONTROL_LINK(enode) : PEER_DATA_LINK(enode);
+            qdr_delivery_t *out_delivery = qdr_forward_new_delivery_CT(core, in_delivery, dest_link, msg);
+            qdr_forward_deliver_CT(core, dest_link, out_delivery);
+            fanout++;
+            addr->deliveries_transit++;
+            core->deliveries_transit++;
+        }
     }
 
     if (!exclude_inprocess) {
@@ -430,8 +433,8 @@ int qdr_forward_closest_CT(qdr_core_t      *core,
                 qdr_forward_on_message_CT(core, sub, in_delivery ? in_delivery->link : 0, msg);
             else {
                 //
-                // Receive is not complete, we will store the sub in in_delivery->subscriptions so we can send the message to the subscription
-                // after the message fully arrives
+                // Receive is not complete, we will store the sub in in_delivery->subscriptions so
+                // we can send the message to the subscription after the message fully arrives
                 //
                 DEQ_INSERT_TAIL(in_delivery->subscriptions, sub);
                 qd_message_Q2_holdoff_disable(msg);
@@ -489,12 +492,12 @@ int qdr_forward_closest_CT(qdr_core_t      *core,
     }
 
     //
-    // If this is an edge router and the address has consumers via the uplink,
-    // send the delivery up the uplink.
+    // If the address has consumers via the uplink, send the delivery via the edge link.
     //
-    if (core->router_mode == QD_ROUTER_MODE_EDGE) {
-        if (addr->via_uplink && core->uplink_router) {
-            out_link = control ? PEER_CONTROL_LINK(core->uplink_router) : PEER_DATA_LINK(core->uplink_router);
+    if (addr->via_uplink) {
+        qdr_node_t *enode = core->router_mode == QD_ROUTER_MODE_EDGE ? core->uplink_router : addr->owned_node;
+        if (enode) {
+            out_link = control ? PEER_CONTROL_LINK(enode) : PEER_DATA_LINK(enode);
             if (out_link) {
                 out_delivery = qdr_forward_new_delivery_CT(core, in_delivery, out_link, msg);
                 qdr_forward_deliver_CT(core, out_link, out_delivery);
@@ -503,8 +506,13 @@ int qdr_forward_closest_CT(qdr_core_t      *core,
                 return 1;
             }
         }
-        return 0;
     }
+
+    //
+    // If we are in the edge-router mode, don't continue.
+    //
+    if (core->router_mode == QD_ROUTER_MODE_EDGE)
+        return 0;
 
     //
     // If the cached list of closest remotes is stale (i.e. cost data has changed),
@@ -676,23 +684,26 @@ int qdr_forward_balanced_CT(qdr_core_t      *core,
             //
             // Check to see of the edge uplink is a better choice
             //
-            if (addr->via_uplink && core->uplink_router) {
-                qdr_link_t *uplink = PEER_DATA_LINK(core->uplink_router);
-                if (uplink) {
-                    int  value    = addr->balanced.uplink_outstanding_deliveries;
-                    bool eligible = uplink->capacity > value;
-                    value += core->uplink_router->cost;
-                    if (eligible && eligible_link_value > value) {
-                        best_eligible_link            = uplink;
-                        best_eligible_link_bit        = -1;
-                        eligible_link_value           = value;
-                        best_eligible_is_local        = false;
-                        best_eligible_is_inter_router = true;
-                    } else if (!eligible && ineligible_link_value > value) {
-                        best_ineligible_link            = uplink;
-                        best_ineligible_link_bit        = -1;
-                        ineligible_link_value           = value;
-                        best_ineligible_is_inter_router = true;
+            if (addr->via_uplink) {
+                qdr_node_t *enode = core->router_mode == QD_ROUTER_MODE_EDGE ? core->uplink_router : addr->owned_node;
+                if (enode) {
+                    qdr_link_t *uplink = PEER_DATA_LINK(enode);
+                    if (uplink) {
+                        int  value    = addr->balanced.uplink_outstanding_deliveries;
+                        bool eligible = uplink->capacity > value;
+                        value += core->uplink_router->cost;
+                        if (eligible && eligible_link_value > value) {
+                            best_eligible_link            = uplink;
+                            best_eligible_link_bit        = -1;
+                            eligible_link_value           = value;
+                            best_eligible_is_local        = false;
+                            best_eligible_is_inter_router = true;
+                        } else if (!eligible && ineligible_link_value > value) {
+                            best_ineligible_link            = uplink;
+                            best_ineligible_link_bit        = -1;
+                            ineligible_link_value           = value;
+                            best_ineligible_is_inter_router = true;
+                        }
                     }
                 }
             }

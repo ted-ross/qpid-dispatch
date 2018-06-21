@@ -785,7 +785,8 @@ static long qdr_addr_path_count_CT(qdr_address_t *addr)
 {
     long rc = ((long) DEQ_SIZE(addr->subscriptions)
                + (long) DEQ_SIZE(addr->rlinks)
-               + (long) qd_bitmask_cardinality(addr->rnodes));
+               + (long) qd_bitmask_cardinality(addr->rnodes)
+               + addr->via_uplink ? 1 : 0);
     if (addr->exchange)
         rc += qdr_exchange_binding_count(addr->exchange)
             + ((qdr_exchange_alternate_addr(addr->exchange)) ? 1 : 0);
@@ -842,7 +843,6 @@ static void qdr_link_forward_CT(qdr_core_t *core, qdr_link_t *link, qdr_delivery
                 core->deliveries_ingress_route_container++;
 
             }
-
         }
         link->total_deliveries++;
     }
@@ -862,7 +862,6 @@ static void qdr_link_forward_CT(qdr_core_t *core, qdr_link_t *link, qdr_delivery
         //
         return;
     }
-
 
     if (fanout == 0) {
         //

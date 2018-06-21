@@ -30,15 +30,16 @@
 #define QDR_ADDRESS_REMOTE_COUNT                        7
 #define QDR_ADDRESS_CONTAINER_COUNT                     8
 #define QDR_ADDRESS_REMOTE_HOST_ROUTERS                 9
-#define QDR_ADDRESS_DELIVERIES_INGRESS                 10
-#define QDR_ADDRESS_DELIVERIES_EGRESS                  11
-#define QDR_ADDRESS_DELIVERIES_TRANSIT                 12
-#define QDR_ADDRESS_DELIVERIES_TO_CONTAINER            13
-#define QDR_ADDRESS_DELIVERIES_FROM_CONTAINER          14
-#define QDR_ADDRESS_DELIVERIES_EGRESS_ROUTE_CONTAINER  15
-#define QDR_ADDRESS_DELIVERIES_INGRESS_ROUTE_CONTAINER 16
-#define QDR_ADDRESS_TRANSIT_OUTSTANDING                17
-#define QDR_ADDRESS_TRACKED_DELIVERIES                 18
+#define QDR_ADDRESS_VIA_UPLINK                         10
+#define QDR_ADDRESS_DELIVERIES_INGRESS                 11
+#define QDR_ADDRESS_DELIVERIES_EGRESS                  12
+#define QDR_ADDRESS_DELIVERIES_TRANSIT                 13
+#define QDR_ADDRESS_DELIVERIES_TO_CONTAINER            14
+#define QDR_ADDRESS_DELIVERIES_FROM_CONTAINER          15
+#define QDR_ADDRESS_DELIVERIES_EGRESS_ROUTE_CONTAINER  16
+#define QDR_ADDRESS_DELIVERIES_INGRESS_ROUTE_CONTAINER 17
+#define QDR_ADDRESS_TRANSIT_OUTSTANDING                18
+#define QDR_ADDRESS_TRACKED_DELIVERIES                 19
 
 const char *qdr_address_columns[] =
     {"name",
@@ -51,6 +52,7 @@ const char *qdr_address_columns[] =
      "remoteCount",
      "containerCount",
      "remoteHostRouters",
+     "viaUplink",
      "deliveriesIngress",
      "deliveriesEgress",
      "deliveriesTransit",
@@ -124,6 +126,10 @@ static void qdr_insert_address_columns_CT(qdr_core_t          *core,
         qd_compose_end_list(body);
         break;
     }
+
+    case QDR_ADDRESS_VIA_UPLINK:
+        qd_compose_insert_bool(body, addr->via_uplink);
+        break;
 
     case QDR_ADDRESS_DELIVERIES_INGRESS:
         qd_compose_insert_ulong(body, addr->deliveries_ingress);
