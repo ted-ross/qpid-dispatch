@@ -444,7 +444,7 @@ class BusManager(Node):
         heads.append(Header("to-proc", Header.COMMAS))
         heads.append(Header("from-proc", Header.COMMAS))
         rows = []
-        cols = ('distribution', 'inProcess', 'subscriberCount', 'remoteCount', 'viaUplink',
+        cols = ('distribution', 'inProcess', 'subscriberCount', 'remoteCount', 'edgeCount',
                 'containerCount', 'deliveriesIngress', 'deliveriesEgress',
                 'deliveriesTransit', 'deliveriesToContainer', 'deliveriesFromContainer', 'name')
 
@@ -459,7 +459,7 @@ class BusManager(Node):
             row.append(addr.inProcess)
             row.append(addr.subscriberCount)
             row.append(addr.remoteCount)
-            row.append('1' if addr.viaUplink else '0')
+            row.append(addr.edgeCount)
             row.append(addr.containerCount)
             row.append(addr.deliveriesIngress)
             row.append(addr.deliveriesEgress)

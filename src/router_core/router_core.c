@@ -478,6 +478,22 @@ void qdr_del_delivery_ref(qdr_delivery_ref_list_t *list, qdr_delivery_ref_t *ref
 }
 
 
+void qdr_add_router_ref_CT(qdr_router_ref_list_t *list, qdr_node_t *node)
+{
+    qdr_router_ref_t *ref = new_qdr_router_ref_t();
+    ZERO(ref);
+    ref->router = node;
+    DEQ_INSERT_TAIL(*list, ref);
+}
+
+
+void qdr_del_router_ref_CT(qdr_router_ref_list_t *list, qdr_router_ref_t *ref)
+{
+    DEQ_REMOVE(*list, ref);
+    free_qdr_router_ref_t(ref);
+}
+
+
 static void qdr_general_handler(void *context)
 {
     qdr_core_t              *core = (qdr_core_t*) context;

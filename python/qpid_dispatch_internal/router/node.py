@@ -261,7 +261,7 @@ class NodeTracker(object):
         if node.set_link_id(link_id, link_maskbit):
             self.nodes_by_link_id[link_id] = node
             node.request_link_state()
-            if not self.edge_mode and not node.is_edge and self.link_state.add_peer(node_id, cost):
+            if not node.is_edge and self.link_state.add_peer(node_id, cost):
                 self.link_state_changed = True
 
         ##
@@ -495,6 +495,8 @@ class RouterNode(object):
         self.peer_link_id      = link_id
         self.peer_link_maskbit = link_maskbit
         self.next_hop_router   = None
+        if self.parent.edge_mode:
+            return False
         self.adapter.set_link(self.address_hash, self.maskbit, link_id, link_maskbit)
         if self.is_edge:
             self.log(LOG_TRACE, "Downlink established to edge router %s, link_id=%r" % (self.id, link_id))

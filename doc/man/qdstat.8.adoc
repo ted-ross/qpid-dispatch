@@ -218,6 +218,9 @@ For this router, the number of local consumers for this address.
 remote::
 The number of remote routers that have at least one consumer for this address.
 
+edge::
+If the router mode is 'edge', this is '1' if there are destinations reachable via the edge uplink.  If the router mode is 'interior', this is the number of destinations for this address on locally-connected edge routers.
+
 cntnr::
 The number of locally-attached containers that are destinations for link routes on this address.
 
