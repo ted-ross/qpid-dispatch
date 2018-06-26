@@ -30,7 +30,7 @@
 #define QDR_ADDRESS_REMOTE_COUNT                        7
 #define QDR_ADDRESS_CONTAINER_COUNT                     8
 #define QDR_ADDRESS_REMOTE_HOST_ROUTERS                 9
-#define QDR_ADDRESS_VIA_UPLINK                         10
+#define QDR_ADDRESS_EDGE_COUNT                         10
 #define QDR_ADDRESS_DELIVERIES_INGRESS                 11
 #define QDR_ADDRESS_DELIVERIES_EGRESS                  12
 #define QDR_ADDRESS_DELIVERIES_TRANSIT                 13
@@ -52,7 +52,7 @@ const char *qdr_address_columns[] =
      "remoteCount",
      "containerCount",
      "remoteHostRouters",
-     "viaUplink",
+     "edgeCount",
      "deliveriesIngress",
      "deliveriesEgress",
      "deliveriesTransit",
@@ -127,8 +127,13 @@ static void qdr_insert_address_columns_CT(qdr_core_t          *core,
         break;
     }
 
-    case QDR_ADDRESS_VIA_UPLINK:
-        qd_compose_insert_bool(body, addr->via_uplink);
+    case QDR_ADDRESS_EDGE_COUNT:
+        if (core->router_mode == QD_ROUTER_MODE_INTERIOR)
+            qd_compose_insert_uint(body, DEQ_SIZE(addr->edge_nodes));
+        else if (core->router_mode == QD_ROUTER_MODE_EDGE)
+            qd_compose_insert_uint(body, addr->via_uplink ? 1 : 0);
+        else
+            qd_compose_insert_uint(body, 0);
         break;
 
     case QDR_ADDRESS_DELIVERIES_INGRESS:

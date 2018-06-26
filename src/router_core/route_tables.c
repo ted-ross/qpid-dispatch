@@ -301,6 +301,8 @@ void qdr_route_table_setup_CT(qdr_core_t *core)
         core->hello_addr  = qdr_add_local_address_CT(core, 'L', "qdhello", QD_TREATMENT_MULTICAST_FLOOD);
         core->uplink_addr = qdr_add_local_address_CT(core, 'L', "_uplink", QD_TREATMENT_ANYCAST_CLOSEST);
         core->uplink_addr->via_uplink = true;
+        core->routerma_addr_T = qdr_add_local_address_CT(core, 'T', "qdrouter.ma", QD_TREATMENT_MULTICAST_ONCE);
+        core->routerma_addr_T->via_uplink = true;
     }
 }
 
@@ -572,31 +574,36 @@ static void qdr_set_next_hop_CT(qdr_core_t *core, qdr_action_t *action, bool dis
     int router_maskbit    = action->args.route_table.router_maskbit;
     int nh_router_maskbit = action->args.route_table.nh_router_maskbit;
 
-    if (router_maskbit >= qd_bitmask_width() || router_maskbit < 0) {
-        qd_log(core->log, QD_LOG_CRITICAL, "set_next_hop: Router maskbit out of range: %d", router_maskbit);
-        return;
-    }
+    do {
+        if (discard)
+            break;
 
-    if (nh_router_maskbit >= qd_bitmask_width() || nh_router_maskbit < 0) {
-        qd_log(core->log, QD_LOG_CRITICAL, "set_next_hop: Next hop router maskbit out of range: %d", router_maskbit);
-        return;
-    }
+        if (router_maskbit >= qd_bitmask_width() || router_maskbit < 0) {
+            qd_log(core->log, QD_LOG_CRITICAL, "set_next_hop: Router maskbit out of range: %d", router_maskbit);
+            break;
+        }
 
-    if (core->routers_by_mask_bit[router_maskbit] == 0) {
-        qd_log(core->log, QD_LOG_CRITICAL, "set_next_hop: Router not found");
-        return;
-    }
+        if (nh_router_maskbit >= qd_bitmask_width() || nh_router_maskbit < 0) {
+            qd_log(core->log, QD_LOG_CRITICAL, "set_next_hop: Next hop router maskbit out of range: %d", router_maskbit);
+            break;
+        }
 
-    if (core->routers_by_mask_bit[nh_router_maskbit] == 0) {
-        qd_log(core->log, QD_LOG_CRITICAL, "set_next_hop: Next hop router not found");
-        return;
-    }
+        if (core->routers_by_mask_bit[router_maskbit] == 0) {
+            qd_log(core->log, QD_LOG_CRITICAL, "set_next_hop: Router not found");
+            break;
+        }
 
-    if (router_maskbit != nh_router_maskbit) {
-        qdr_node_t *rnode = core->routers_by_mask_bit[router_maskbit];
-        rnode->next_hop   = core->routers_by_mask_bit[nh_router_maskbit];
-        qdr_addr_start_inlinks_CT(core, rnode->owning_addr);
-    }
+        if (core->routers_by_mask_bit[nh_router_maskbit] == 0) {
+            qd_log(core->log, QD_LOG_CRITICAL, "set_next_hop: Next hop router not found");
+            break;
+        }
+
+        if (router_maskbit != nh_router_maskbit) {
+            qdr_node_t *rnode = core->routers_by_mask_bit[router_maskbit];
+            rnode->next_hop   = core->routers_by_mask_bit[nh_router_maskbit];
+            qdr_addr_start_inlinks_CT(core, rnode->owning_addr);
+        }
+    } while (false);
 }
 
 
@@ -604,13 +611,18 @@ static void qdr_remove_next_hop_CT(qdr_core_t *core, qdr_action_t *action, bool 
 {
     int router_maskbit = action->args.route_table.router_maskbit;
 
-    if (router_maskbit >= qd_bitmask_width() || router_maskbit < 0) {
-        qd_log(core->log, QD_LOG_CRITICAL, "remove_next_hop: Router maskbit out of range: %d", router_maskbit);
-        return;
-    }
+    do {
+        if (discard)
+            break;
 
-    qdr_node_t *rnode = core->routers_by_mask_bit[router_maskbit];
-    rnode->next_hop = 0;
+        if (router_maskbit >= qd_bitmask_width() || router_maskbit < 0) {
+            qd_log(core->log, QD_LOG_CRITICAL, "remove_next_hop: Router maskbit out of range: %d", router_maskbit);
+            break;
+        }
+
+        qdr_node_t *rnode = core->routers_by_mask_bit[router_maskbit];
+        rnode->next_hop = 0;
+    } while (false);
 }
 
 
@@ -619,19 +631,24 @@ static void qdr_set_cost_CT(qdr_core_t *core, qdr_action_t *action, bool discard
     int router_maskbit = action->args.route_table.router_maskbit;
     int cost           = action->args.route_table.cost;
 
-    if (router_maskbit >= qd_bitmask_width() || router_maskbit < 0) {
-        qd_log(core->log, QD_LOG_CRITICAL, "set_cost: Router maskbit out of range: %d", router_maskbit);
-        return;
-    }
+    do {
+        if (discard)
+            break;
 
-    if (cost < 1) {
-        qd_log(core->log, QD_LOG_CRITICAL, "set_cost: Invalid cost %d for maskbit: %d", cost, router_maskbit);
-        return;
-    }
+        if (router_maskbit >= qd_bitmask_width() || router_maskbit < 0) {
+            qd_log(core->log, QD_LOG_CRITICAL, "set_cost: Router maskbit out of range: %d", router_maskbit);
+            break;
+        }
 
-    qdr_node_t *rnode = core->routers_by_mask_bit[router_maskbit];
-    rnode->cost = cost;
-    qdr_route_table_update_cost_CT(core, rnode);
+        if (cost < 1) {
+            qd_log(core->log, QD_LOG_CRITICAL, "set_cost: Invalid cost %d for maskbit: %d", cost, router_maskbit);
+            break;
+        }
+
+        qdr_node_t *rnode = core->routers_by_mask_bit[router_maskbit];
+        rnode->cost = cost;
+        qdr_route_table_update_cost_CT(core, rnode);
+    } while (false);
 }
 
 
@@ -640,12 +657,11 @@ static void qdr_set_valid_origins_CT(qdr_core_t *core, qdr_action_t *action, boo
     int           router_maskbit = action->args.route_table.router_maskbit;
     qd_bitmask_t *valid_origins  = action->args.route_table.router_set;
 
-    if (discard) {
-        qd_bitmask_free(valid_origins);
-        return;
-    }
-
     do {
+        if (discard)
+            break;
+        assert(core->router_mode == QD_ROUTER_MODE_INTERIOR);
+
         if (router_maskbit >= qd_bitmask_width() || router_maskbit < 0) {
             qd_log(core->log, QD_LOG_CRITICAL, "set_valid_origins: Router maskbit out of range: %d", router_maskbit);
             break;
@@ -673,12 +689,11 @@ static void qdr_map_destination_CT(qdr_core_t *core, qdr_action_t *action, bool 
     int          router_maskbit = action->args.route_table.router_maskbit;
     qdr_field_t *address        = action->args.route_table.address;
 
-    if (discard) {
-        qdr_field_free(address);
-        return;
-    }
-
     do {
+        if (discard)
+            break;
+        assert(core->router_mode == QD_ROUTER_MODE_INTERIOR);
+
         if (router_maskbit >= qd_bitmask_width() || router_maskbit < 0) {
             qd_log(core->log, QD_LOG_CRITICAL, "map_destination: Router maskbit out of range: %d", router_maskbit);
             break;
@@ -725,12 +740,11 @@ static void qdr_unmap_destination_CT(qdr_core_t *core, qdr_action_t *action, boo
     int          router_maskbit = action->args.route_table.router_maskbit;
     qdr_field_t *address        = action->args.route_table.address;
 
-    if (discard) {
-        qdr_field_free(address);
-        return;
-    }
-
     do {
+        if (discard)
+            break;
+        assert(core->router_mode == QD_ROUTER_MODE_INTERIOR);
+
         if (router_maskbit >= qd_bitmask_width() || router_maskbit < 0) {
             qd_log(core->log, QD_LOG_CRITICAL, "unmap_destination: Router maskbit out of range: %d", router_maskbit);
             break;
@@ -755,10 +769,6 @@ static void qdr_unmap_destination_CT(qdr_core_t *core, qdr_action_t *action, boo
         rnode->ref_count--;
         addr->cost_epoch--;
 
-        //
-        // TODO - If this affects a waypoint, create the proper side effects
-        //
-
         qdr_check_addr_CT(core, addr, false);
     } while (false);
 
@@ -774,6 +784,7 @@ static void qdr_set_uplink_CT(qdr_core_t *core, qdr_action_t *action, bool disca
     do {
         if (discard)
             break;
+        assert(core->router_mode == QD_ROUTER_MODE_EDGE);
 
         //
         // Hash lookup the edge-router address.
@@ -814,6 +825,7 @@ static void qdr_set_uplink_CT(qdr_core_t *core, qdr_action_t *action, bool disca
 static void qdr_remove_uplink_CT(qdr_core_t *core, qdr_action_t *action, bool discard)
 {
     if (!discard) {
+        assert(core->router_mode == QD_ROUTER_MODE_EDGE);
         if (core->uplink_router) {
             core->uplink_router->link_set = 0;
             core->uplink_router = 0;
@@ -829,6 +841,31 @@ static void qdr_map_uplink_CT(qdr_core_t *core, qdr_action_t *action, bool disca
     do {
         if (discard)
             break;
+        assert(core->router_mode == QD_ROUTER_MODE_EDGE);
+
+        qd_iterator_t *iter = address_hash->iterator;
+        qdr_address_t *addr = 0;
+
+        qd_hash_retrieve(core->addr_hash, iter, (void**) &addr);
+        if (!addr) {
+            addr = qdr_address_CT(core, qdr_treatment_for_address_hash_CT(core, iter));
+            if (!addr) break;
+            qd_hash_insert(core->addr_hash, iter, addr, &addr->hash_handle);
+            DEQ_ITEM_INIT(addr);
+            DEQ_INSERT_TAIL(core->addrs, addr);
+            // if the address is a link route, add the pattern to the wildcard
+            // address parse tree
+            {
+                const char *a_str = (const char*) qd_hash_key_by_handle(addr->hash_handle);
+                if (QDR_IS_LINK_ROUTE(a_str[0])) {
+                    qdr_link_route_map_pattern_CT(core, iter, addr);
+                }
+            }
+        }
+
+        addr->via_uplink = true;
+        addr->cost_epoch--;
+        qdr_addr_start_inlinks_CT(core, addr);
     } while (false);
 
     qdr_field_free(address_hash);
@@ -842,6 +879,20 @@ static void qdr_unmap_uplink_CT(qdr_core_t *core, qdr_action_t *action, bool dis
     do {
         if (discard)
             break;
+        assert(core->router_mode == QD_ROUTER_MODE_EDGE);
+
+        qd_iterator_t *iter = address_hash->iterator;
+        qdr_address_t *addr = 0;
+
+        qd_hash_retrieve(core->addr_hash, iter, (void**) &addr);
+        if (!addr) {
+            qd_log(core->log, QD_LOG_CRITICAL, "unmap_uplink: Address not found");
+            break;
+        }
+        
+        addr->via_uplink = false;
+        addr->cost_epoch--;
+        qdr_check_addr_CT(core, addr, false);
     } while (false);
 
     qdr_field_free(address_hash);
@@ -856,6 +907,40 @@ static void qdr_map_edge_CT(qdr_core_t *core, qdr_action_t *action, bool discard
     do {
         if (discard)
             break;
+        assert(core->router_mode == QD_ROUTER_MODE_INTERIOR);
+
+        qd_iterator_t *iter      = edge_address->iterator;
+        qdr_address_t *edge_addr = 0;
+        qdr_address_t *addr      = 0;
+
+        qd_hash_retrieve(core->addr_hash, iter, (void**) &edge_addr);
+        if (!edge_addr || !edge_addr->owned_node) {
+            qd_log(core->log, QD_LOG_CRITICAL, "map_edge: Edge router not found");
+            break;
+        }
+
+        iter = address_hash->iterator;
+        qd_hash_retrieve(core->addr_hash, iter, (void**) &addr);
+        if (!addr) {
+            addr = qdr_address_CT(core, qdr_treatment_for_address_hash_CT(core, iter));
+            if (!addr) break;
+            qd_hash_insert(core->addr_hash, iter, addr, &addr->hash_handle);
+            DEQ_ITEM_INIT(addr);
+            DEQ_INSERT_TAIL(core->addrs, addr);
+            // if the address is a link route, add the pattern to the wildcard
+            // address parse tree
+            {
+                const char *a_str = (const char*) qd_hash_key_by_handle(addr->hash_handle);
+                if (QDR_IS_LINK_ROUTE(a_str[0])) {
+                    qdr_link_route_map_pattern_CT(core, iter, addr);
+                }
+            }
+        }
+
+        qdr_add_router_ref_CT(&addr->edge_nodes, edge_addr->owned_node);
+        edge_addr->owned_node->ref_count++;
+        addr->cost_epoch--;
+        qdr_addr_start_inlinks_CT(core, addr);
     } while (false);
 
     qdr_field_free(address_hash);
@@ -871,6 +956,37 @@ static void qdr_unmap_edge_CT(qdr_core_t *core, qdr_action_t *action, bool disca
     do {
         if (discard)
             break;
+        assert(core->router_mode == QD_ROUTER_MODE_INTERIOR);
+
+        qd_iterator_t *iter      = edge_address->iterator;
+        qdr_address_t *edge_addr = 0;
+        qdr_address_t *addr      = 0;
+
+        qd_hash_retrieve(core->addr_hash, iter, (void**) &edge_addr);
+        if (!edge_addr || !edge_addr->owned_node) {
+            qd_log(core->log, QD_LOG_CRITICAL, "unmap_edge: Edge router not found");
+            break;
+        }
+
+        iter = address_hash->iterator;
+        qd_hash_retrieve(core->addr_hash, iter, (void**) &addr);
+        if (!addr) {
+            qd_log(core->log, QD_LOG_CRITICAL, "unmap_edge: Address not found");
+            break;
+        }
+
+        qdr_router_ref_t *ref = DEQ_HEAD(addr->edge_nodes);
+        while (ref) {
+            if (ref->router == edge_addr->owned_node) {
+                qdr_del_router_ref_CT(&addr->edge_nodes, ref);
+                edge_addr->owned_node->ref_count--;
+                ref = 0;
+            } else
+                ref = DEQ_NEXT(ref);
+        }
+
+        addr->cost_epoch--;
+        qdr_check_addr_CT(core, addr, false);
     } while (false);
 
     qdr_field_free(address_hash);

@@ -320,6 +320,9 @@ struct qdr_router_ref_t {
 ALLOC_DECLARE(qdr_router_ref_t);
 DEQ_DECLARE(qdr_router_ref_t, qdr_router_ref_list_t);
 
+void qdr_add_router_ref_CT(qdr_router_ref_list_t *list, qdr_node_t *node);
+void qdr_del_router_ref_CT(qdr_router_ref_list_t *list, qdr_router_ref_t *ref);
+
 typedef enum {
     QDR_DELIVERY_NOWHERE = 0,
     QDR_DELIVERY_IN_UNDELIVERED,

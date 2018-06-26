@@ -1493,9 +1493,9 @@
                     "type": "integer",
                     "description": "Number of transit deliveries being tracked for this address (for balanced distribution)."
                 },
-                "viaUplink": {
-                    "type": "boolean",
-                    "description": "True if there are consumers for this address via the edge uplink (relevant on edge routers only)."
+                "edgeCount": {
+                    "type": "integer",
+                    "description": "Number of localy connected edge uplinks that lead to destinations for this address."
                 }
             }
         },
