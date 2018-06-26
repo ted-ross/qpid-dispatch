@@ -424,7 +424,7 @@ class BusManager(Node):
             dispRows = sort.getSorted()
             disp.formattedTable(title, heads, dispRows)
         else:
-            print "Router is Standalone - No Router List"
+            print("Router is Standalone - No Router List")
 
     def displayAddresses(self):
         disp = Display(prefix="  ")
