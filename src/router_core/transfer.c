@@ -748,11 +748,13 @@ static void qdr_link_flow_CT(qdr_core_t *core, qdr_action_t *action, bool discar
         activate = true;
     }
 
-    //
-    // If this is an attach-routed link, propagate the flow data downrange.
-    // Note that the credit value is incremental.
-    //
-    if (link->connected_link) {
+    if (link->core_endpoint) {
+        qdrc_endpoint_do_flow_CT(core, link->core_endpoint, credit, drain);
+    } else if (link->connected_link) {
+        //
+        // If this is an attach-routed link, propagate the flow data downrange.
+        // Note that the credit value is incremental.
+        //
         qdr_link_t *clink = link->connected_link;
 
         if (clink->link_direction == QD_INCOMING)

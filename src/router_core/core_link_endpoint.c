@@ -111,6 +111,21 @@ void qdrc_endpoint_send_CT(qdr_core_t *core, qdrc_endpoint_t *ep, qdr_delivery_t
 }
 
 
+qdr_delivery_t *qdrc_endpoint_delivery_CT(qdr_core_t *core, qdrc_endpoint_t *endpoint, qd_message_t *message)
+{
+    qdr_delivery_t *dlv = new_qdr_delivery_t();
+    uint64_t       *tag = (uint64_t*) dlv->tag;
+
+    ZERO(dlv);
+    dlv->link           = endpoint->link;
+    dlv->msg            = message;
+    *tag                = core->next_tag++;
+    dlv->tag_length = 8;
+    dlv->ingress_index = -1;
+    return dlv;
+}
+
+
 void qdrc_endpoint_settle_CT(qdr_core_t *core, qdr_delivery_t *dlv, uint64_t disposition)
 {
     //
@@ -164,17 +179,8 @@ void qdrc_endpoint_do_deliver_CT(qdr_core_t *core, qdrc_endpoint_t *ep, qdr_deli
 }
 
 
-qdr_delivery_t *qdrc_endpoint_delivery_CT(qdr_core_t *core, qdrc_endpoint_t *endpoint, qd_message_t *message)
+void qdrc_endpoint_do_flow_CT(qdr_core_t *core, qdrc_endpoint_t *ep, int credit, bool drain)
 {
-    qdr_delivery_t *dlv = new_qdr_delivery_t();
-    uint64_t       *tag = (uint64_t*) dlv->tag;
-
-    ZERO(dlv);
-    dlv->link           = endpoint->link;
-    dlv->msg            = message;
-    *tag                = core->next_tag++;
-    dlv->tag_length = 8;
-    dlv->ingress_index = -1;
-    return dlv;
+    ep->desc->on_flow(ep->link_context, credit, drain);
 }
 

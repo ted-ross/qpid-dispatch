@@ -18,15 +18,19 @@
  */
 
 #include "qpid/dispatch/ctools.h"
+#include "qpid/dispatch/message.h"
+#include "qpid/dispatch/compose.h"
 #include "core_test_hooks.h"
 #include "core_link_endpoint.h"
 #include <stdio.h>
+#include <inttypes.h>
 
 typedef enum {
     TEST_NODE_ECHO,
     TEST_NODE_DENY,
     TEST_NODE_SINK,
     TEST_NODE_SOURCE,
+    TEST_NODE_SOURCE_PS,
     TEST_NODE_DISCARD
 } test_node_behavior_t;
 
@@ -37,6 +41,7 @@ typedef struct test_endpoint_t {
     test_node_t         *node;
     qdrc_endpoint_t     *ep;
     qdr_delivery_list_t  deliveries;
+    int                  credit;
 } test_endpoint_t;
 
 DEQ_DECLARE(test_endpoint_t, test_endpoint_list_t);
@@ -50,8 +55,73 @@ struct test_node_t {
 };
 
 
-static void send_delivery(test_endpoint_t *ep)
+static void endpoint_action(qdr_core_t *core, qdr_action_t *action, bool discard);
+
+
+static void source_send(test_endpoint_t *ep, bool presettled)
 {
+    static uint32_t      sequence = 0;
+    static char          stringbuf[100];
+    qdr_delivery_t      *dlv;
+    qd_message_t        *msg   = qd_message();
+    qd_composed_field_t *field = qd_compose(QD_PERFORMATIVE_HEADER, 0);
+
+    sprintf(stringbuf, "Sequence: %"PRIu32, sequence);
+
+    qd_compose_start_list(field);
+    qd_compose_insert_bool(field, 0);     // durable
+    qd_compose_end_list(field);
+
+    field = qd_compose(QD_PERFORMATIVE_PROPERTIES, field);
+    qd_compose_start_list(field);
+    qd_compose_insert_null(field);        // message-id
+    qd_compose_end_list(field);
+
+    field = qd_compose(QD_PERFORMATIVE_APPLICATION_PROPERTIES, field);
+    qd_compose_start_map(field);
+    qd_compose_insert_symbol(field, "sequence");
+    qd_compose_insert_uint(field, sequence++);
+    qd_compose_end_map(field);
+
+    field = qd_compose(QD_PERFORMATIVE_BODY_AMQP_VALUE, field);
+    qd_compose_insert_string(field, stringbuf);
+
+    dlv = qdrc_endpoint_delivery_CT(ep->node->core, ep->ep, msg);
+    qd_message_compose_2(msg, field);
+    qd_compose_free(field);
+    qdrc_endpoint_send_CT(ep->node->core, ep->ep, dlv, presettled);
+
+    if (--ep->credit > 0) {
+        qdr_action_t *action = qdr_action(endpoint_action, "test_hooks_endpoint_action");
+        action->args.general.context_1 = (void*) ep;
+        qdr_action_enqueue(ep->node->core, action);
+    }
+}
+
+
+static void endpoint_action(qdr_core_t *core, qdr_action_t *action, bool discard)
+{
+    if (discard)
+        return;
+
+    test_endpoint_t *ep = (test_endpoint_t*) action->args.general.context_1;
+
+    switch (ep->node->behavior) {
+    case TEST_NODE_DENY :
+    case TEST_NODE_SINK :
+    case TEST_NODE_DISCARD :
+
+    case TEST_NODE_SOURCE :
+        source_send(ep, false);
+        break;
+
+    case TEST_NODE_SOURCE_PS :
+        source_send(ep, true);
+        break;
+
+    case TEST_NODE_ECHO :
+        break;
+    }
 }
 
 
@@ -82,6 +152,7 @@ static bool first_attach(void             *bind_context,
         break;
 
     case TEST_NODE_SOURCE :
+    case TEST_NODE_SOURCE_PS :
         if (incoming) {
             *error = qdr_error("qd:forbidden", "Source function only accepts outgoing links");
             return false;
@@ -125,8 +196,28 @@ static void flow(void *link_context,
                  bool  drain)
 {
     test_endpoint_t *ep = (test_endpoint_t*) link_context;
-    if (available_credit > 0)
-        send_delivery(ep);
+    if (available_credit == 0)
+        return;
+
+    ep->credit = available_credit;
+
+    switch (ep->node->behavior) {
+    case TEST_NODE_DENY :
+    case TEST_NODE_SINK :
+    case TEST_NODE_DISCARD :
+        break;
+
+    case TEST_NODE_SOURCE :
+        source_send(ep, false);
+        break;
+
+    case TEST_NODE_SOURCE_PS :
+        source_send(ep, true);
+        break;
+
+    case TEST_NODE_ECHO :
+        break;
+    }
 }
 
 
@@ -150,6 +241,7 @@ static void transfer(void           *link_context,
     switch (ep->node->behavior) {
     case TEST_NODE_DENY :
     case TEST_NODE_SOURCE :
+    case TEST_NODE_SOURCE_PS :
         assert(false); // Can't get here.  Link should not have been opened
         break;
 
@@ -179,15 +271,19 @@ static qdrc_endpoint_desc_t descriptor = {first_attach, second_attach, flow, upd
 
 static void qdrc_test_hooks_core_endpoint_setup(qdr_core_t *core)
 {
-    char *echo_address    = "org.apache.qpid.dispatch.router/test/echo";
-    char *deny_address    = "org.apache.qpid.dispatch.router/test/deny";
-    char *sink_address    = "org.apache.qpid.dispatch.router/test/sink";
-    char *discard_address = "org.apache.qpid.dispatch.router/test/discard";
+    char *echo_address       = "org.apache.qpid.dispatch.router/test/echo";
+    char *deny_address       = "org.apache.qpid.dispatch.router/test/deny";
+    char *sink_address       = "org.apache.qpid.dispatch.router/test/sink";
+    char *source_address     = "org.apache.qpid.dispatch.router/test/source";
+    char *source_ps_address  = "org.apache.qpid.dispatch.router/test/source_ps";
+    char *discard_address    = "org.apache.qpid.dispatch.router/test/discard";
 
-    test_node_t *echo_node    = NEW(test_node_t);
-    test_node_t *deny_node    = NEW(test_node_t);
-    test_node_t *sink_node    = NEW(test_node_t);
-    test_node_t *discard_node = NEW(test_node_t);
+    test_node_t *echo_node       = NEW(test_node_t);
+    test_node_t *deny_node       = NEW(test_node_t);
+    test_node_t *sink_node       = NEW(test_node_t);
+    test_node_t *source_node     = NEW(test_node_t);
+    test_node_t *source_ps_node  = NEW(test_node_t);
+    test_node_t *discard_node    = NEW(test_node_t);
 
     echo_node->core     = core;
     echo_node->behavior = TEST_NODE_ECHO;
@@ -206,6 +302,18 @@ static void qdrc_test_hooks_core_endpoint_setup(qdr_core_t *core)
     sink_node->desc     = &descriptor;
     DEQ_INIT(sink_node->out_links);
     qdrc_endpoint_bind_mobile_address_CT(core, sink_address, '0', &descriptor, sink_node);
+
+    source_node->core     = core;
+    source_node->behavior = TEST_NODE_SOURCE;
+    source_node->desc     = &descriptor;
+    DEQ_INIT(source_node->out_links);
+    qdrc_endpoint_bind_mobile_address_CT(core, source_address, '0', &descriptor, source_node);
+
+    source_ps_node->core     = core;
+    source_ps_node->behavior = TEST_NODE_SOURCE_PS;
+    source_ps_node->desc     = &descriptor;
+    DEQ_INIT(source_ps_node->out_links);
+    qdrc_endpoint_bind_mobile_address_CT(core, source_ps_address, '0', &descriptor, source_ps_node);
 
     discard_node->core     = core;
     discard_node->behavior = TEST_NODE_DISCARD;
