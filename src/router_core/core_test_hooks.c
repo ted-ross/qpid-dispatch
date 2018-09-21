@@ -42,6 +42,8 @@ typedef struct test_endpoint_t {
     qdrc_endpoint_t     *ep;
     qdr_delivery_list_t  deliveries;
     int                  credit;
+    bool                 in_action_list;
+    bool                 detached;
 } test_endpoint_t;
 
 DEQ_DECLARE(test_endpoint_t, test_endpoint_list_t);
@@ -94,6 +96,7 @@ static void source_send(test_endpoint_t *ep, bool presettled)
     if (--ep->credit > 0) {
         qdr_action_t *action = qdr_action(endpoint_action, "test_hooks_endpoint_action");
         action->args.general.context_1 = (void*) ep;
+        ep->in_action_list = true;
         qdr_action_enqueue(ep->node->core, action);
     }
 }
@@ -105,6 +108,12 @@ static void endpoint_action(qdr_core_t *core, qdr_action_t *action, bool discard
         return;
 
     test_endpoint_t *ep = (test_endpoint_t*) action->args.general.context_1;
+
+    ep->in_action_list = false;
+    if (ep->detached) {
+        free(ep);
+        return;
+    }
 
     switch (ep->node->behavior) {
     case TEST_NODE_DENY :
@@ -136,7 +145,7 @@ static bool first_attach(void             *bind_context,
 
     switch (node->behavior) {
     case TEST_NODE_DENY :
-        *error = qdr_error("qd:forbidden", "Connectivity to the node is forbidden");
+        *error = qdr_error("qd:forbidden", "Connectivity to the deny node is forbidden");
         return false;
 
     case TEST_NODE_ECHO :
@@ -264,6 +273,13 @@ static void transfer(void           *link_context,
 static void detach(void        *link_context,
                    qdr_error_t *error)
 {
+    test_endpoint_t *ep = (test_endpoint_t*) link_context;
+
+    if (ep->in_action_list) {
+        ep->detached = true;
+    } else {
+        free(ep);
+    }
 }
 
 static qdrc_endpoint_desc_t descriptor = {first_attach, second_attach, flow, update, transfer, detach};

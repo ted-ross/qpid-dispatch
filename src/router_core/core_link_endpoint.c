@@ -165,8 +165,10 @@ bool qdrc_endpoint_do_bound_attach_CT(qdr_core_t *core, qdr_address_t *addr, qdr
     bool accept = !!ep->desc->on_first_attach ?
         ep->desc->on_first_attach(addr->core_endpoint_context, ep, &ep->link_context, error) : false;
 
-    if (!accept)
+    if (!accept) {
+        link->core_endpoint = 0;
         free_qdrc_endpoint_t(ep);
+    }
 
     return accept;
 }
@@ -183,4 +185,11 @@ void qdrc_endpoint_do_flow_CT(qdr_core_t *core, qdrc_endpoint_t *ep, int credit,
 {
     ep->desc->on_flow(ep->link_context, credit, drain);
 }
+
+
+void qdrc_endpoint_do_detach_CT(qdr_core_t *core, qdrc_endpoint_t *ep, qdr_error_t *error)
+{
+    ep->desc->on_detach(ep->link_context, error);
+}
+
 
