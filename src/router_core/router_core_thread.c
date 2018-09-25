@@ -93,6 +93,7 @@ void *router_core_thread(void *arg)
         qdr_activate_connections_CT(core);
     }
 
+    qdrc_test_hooks_final_CT(core);
     qd_log(core->log, QD_LOG_INFO, "Router Core thread exited");
     return 0;
 }

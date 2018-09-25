@@ -149,6 +149,10 @@ void qdrc_endpoint_settle_CT(qdr_core_t *core, qdr_delivery_t *dlv, uint64_t dis
 void qdrc_endpoint_detach_CT(qdr_core_t *core, qdrc_endpoint_t *ep, qdr_error_t *error)
 {
     qdr_link_outbound_detach_CT(core, ep->link, error, QDR_CONDITION_NONE, true);
+    if (ep->link->detach_count == 2) {
+        ep->link->core_endpoint = 0;
+        free_qdrc_endpoint_t(ep);
+    }
 }
 
 
@@ -190,6 +194,17 @@ void qdrc_endpoint_do_flow_CT(qdr_core_t *core, qdrc_endpoint_t *ep, int credit,
 void qdrc_endpoint_do_detach_CT(qdr_core_t *core, qdrc_endpoint_t *ep, qdr_error_t *error)
 {
     ep->desc->on_detach(ep->link_context, error);
+    if (ep->link->detach_count == 2) {
+        ep->link->core_endpoint = 0;
+        free_qdrc_endpoint_t(ep);
+    }
+}
+
+
+void qdrc_endpoint_do_cleanup_CT(qdr_core_t *core, qdrc_endpoint_t *ep)
+{
+    ep->desc->on_cleanup(ep->link_context);
+    free_qdrc_endpoint_t(ep);
 }
 
 

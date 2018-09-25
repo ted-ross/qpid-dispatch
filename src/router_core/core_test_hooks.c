@@ -56,6 +56,13 @@ struct test_node_t {
     test_endpoint_list_t  out_links;
 };
 
+static test_node_t *echo_node;
+static test_node_t *deny_node;
+static test_node_t *sink_node;
+static test_node_t *source_node;
+static test_node_t *source_ps_node;
+static test_node_t *discard_node;
+
 
 static void endpoint_action(qdr_core_t *core, qdr_action_t *action, bool discard);
 
@@ -102,6 +109,18 @@ static void source_send(test_endpoint_t *ep, bool presettled)
 }
 
 
+static void free_endpoint(test_endpoint_t *ep)
+{
+    test_node_t *node = ep->node;
+
+    if (qdrc_endpoint_get_direction_CT(ep->ep) == QD_INCOMING)
+        DEQ_REMOVE(node->in_links, ep);
+    else
+        DEQ_REMOVE(node->out_links, ep);
+    free(ep);
+}
+
+
 static void endpoint_action(qdr_core_t *core, qdr_action_t *action, bool discard)
 {
     if (discard)
@@ -111,7 +130,7 @@ static void endpoint_action(qdr_core_t *core, qdr_action_t *action, bool discard
 
     ep->in_action_list = false;
     if (ep->detached) {
-        free(ep);
+        free_endpoint(ep);
         return;
     }
 
@@ -278,11 +297,17 @@ static void detach(void        *link_context,
     if (ep->in_action_list) {
         ep->detached = true;
     } else {
-        free(ep);
+        free_endpoint(ep);
     }
 }
 
-static qdrc_endpoint_desc_t descriptor = {first_attach, second_attach, flow, update, transfer, detach};
+
+static void cleanup(void *link_context)
+{
+}
+
+
+static qdrc_endpoint_desc_t descriptor = {first_attach, second_attach, flow, update, transfer, detach, cleanup};
 
 
 static void qdrc_test_hooks_core_endpoint_setup(qdr_core_t *core)
@@ -294,48 +319,65 @@ static void qdrc_test_hooks_core_endpoint_setup(qdr_core_t *core)
     char *source_ps_address  = "org.apache.qpid.dispatch.router/test/source_ps";
     char *discard_address    = "org.apache.qpid.dispatch.router/test/discard";
 
-    test_node_t *echo_node       = NEW(test_node_t);
-    test_node_t *deny_node       = NEW(test_node_t);
-    test_node_t *sink_node       = NEW(test_node_t);
-    test_node_t *source_node     = NEW(test_node_t);
-    test_node_t *source_ps_node  = NEW(test_node_t);
-    test_node_t *discard_node    = NEW(test_node_t);
+    echo_node       = NEW(test_node_t);
+    deny_node       = NEW(test_node_t);
+    sink_node       = NEW(test_node_t);
+    source_node     = NEW(test_node_t);
+    source_ps_node  = NEW(test_node_t);
+    discard_node    = NEW(test_node_t);
 
     echo_node->core     = core;
     echo_node->behavior = TEST_NODE_ECHO;
     echo_node->desc     = &descriptor;
+    DEQ_INIT(echo_node->in_links);
     DEQ_INIT(echo_node->out_links);
     qdrc_endpoint_bind_mobile_address_CT(core, echo_address, '0', &descriptor, echo_node);
 
     deny_node->core     = core;
     deny_node->behavior = TEST_NODE_DENY;
     deny_node->desc     = &descriptor;
+    DEQ_INIT(deny_node->in_links);
     DEQ_INIT(deny_node->out_links);
     qdrc_endpoint_bind_mobile_address_CT(core, deny_address, '0', &descriptor, deny_node);
 
     sink_node->core     = core;
     sink_node->behavior = TEST_NODE_SINK;
     sink_node->desc     = &descriptor;
+    DEQ_INIT(sink_node->in_links);
     DEQ_INIT(sink_node->out_links);
     qdrc_endpoint_bind_mobile_address_CT(core, sink_address, '0', &descriptor, sink_node);
 
     source_node->core     = core;
     source_node->behavior = TEST_NODE_SOURCE;
     source_node->desc     = &descriptor;
+    DEQ_INIT(source_node->in_links);
     DEQ_INIT(source_node->out_links);
     qdrc_endpoint_bind_mobile_address_CT(core, source_address, '0', &descriptor, source_node);
 
     source_ps_node->core     = core;
     source_ps_node->behavior = TEST_NODE_SOURCE_PS;
     source_ps_node->desc     = &descriptor;
+    DEQ_INIT(source_ps_node->in_links);
     DEQ_INIT(source_ps_node->out_links);
     qdrc_endpoint_bind_mobile_address_CT(core, source_ps_address, '0', &descriptor, source_ps_node);
 
     discard_node->core     = core;
     discard_node->behavior = TEST_NODE_DISCARD;
     discard_node->desc     = &descriptor;
+    DEQ_INIT(discard_node->in_links);
     DEQ_INIT(discard_node->out_links);
     qdrc_endpoint_bind_mobile_address_CT(core, discard_address, '0', &descriptor, discard_node);
+}
+
+
+static void qdrc_test_hooks_core_endpoint_finalize(qdr_core_t *core)
+{
+    free(echo_node);
+    free(deny_node);
+    free(sink_node);
+    free(source_node);
+    free(source_ps_node);
+    free(discard_node);
 }
 
 
@@ -350,5 +392,17 @@ void qdrc_test_hooks_init_CT(qdr_core_t *core)
     qd_log(core->log, QD_LOG_INFO, "Core thread system test hooks enabled");
 
     qdrc_test_hooks_core_endpoint_setup(core);
+}
+
+
+void qdrc_test_hooks_final_CT(qdr_core_t *core)
+{
+    //
+    // Exit if the test hooks are not enabled (by the --test-hooks command line option)
+    //
+    if (!core->qd->test_hooks)
+        return;
+
+    qdrc_test_hooks_core_endpoint_finalize(core);
 }
 

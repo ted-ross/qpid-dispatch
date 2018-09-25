@@ -23,5 +23,6 @@
 #include "router_core_private.h"
 
 void qdrc_test_hooks_init_CT(qdr_core_t *core);
+void qdrc_test_hooks_final_CT(qdr_core_t *core);
 
 #endif

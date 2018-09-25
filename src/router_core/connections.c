@@ -816,6 +816,13 @@ static void qdr_link_cleanup_CT(qdr_core_t *core, qdr_connection_t *conn, qdr_li
     DEQ_REMOVE(core->open_links, link);
 
     //
+    // If the link has a core_endpoint, allow the core_endpoint module to
+    // clean up its state
+    //
+    if (link->core_endpoint)
+        qdrc_endpoint_do_cleanup_CT(core, link->core_endpoint);
+
+    //
     // If the link has a connected peer, unlink the peer
     //
     if (link->connected_link) {
