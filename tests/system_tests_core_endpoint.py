@@ -59,7 +59,6 @@ class RouterTest(TestCase):
             cls.routers.append(cls.tester.qdrouterd(name, config, wait=True, cl_args=args))
 
         cls.routers = []
-
         inter_router_port = cls.tester.get_port()
 
         router('A', ('listener', {'role': 'inter-router', 'port': inter_router_port}), ["-T"])
@@ -70,7 +69,7 @@ class RouterTest(TestCase):
         test.run()
         self.assertEqual(None, test.error)
 
-    def test_02_one_router_discard_deliveries(self):
+    def test_02_discard_deliveries(self):
         test = DiscardTest(self.routers[0].addresses[0], "org.apache.qpid.dispatch.router/test/discard")
         test.run()
         self.assertEqual(None, test.error)
