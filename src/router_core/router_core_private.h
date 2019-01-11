@@ -737,6 +737,7 @@ struct qdr_core_t {
     qdr_core_timer_list_t    scheduled_timers;
     qdr_general_work_list_t  work_list;
     qd_timer_t              *work_timer;
+    uint32_t                 uptime_ticks;
 
     qdr_connection_list_t open_connections;
     qdr_connection_t     *active_edge_connection;
