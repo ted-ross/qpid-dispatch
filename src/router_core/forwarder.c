@@ -125,6 +125,7 @@ qdr_delivery_t *qdr_forward_new_delivery_CT(qdr_core_t *core, qdr_delivery_t *in
     out_dlv->tag_length = 8;
     out_dlv->error      = 0;
 
+    out_dlv->ingress_time  = in_dlv ? in_dlv->ingress_time  : core->uptime_ticks;
     out_dlv->ingress_index = in_dlv ? in_dlv->ingress_index : -1;
 
     //

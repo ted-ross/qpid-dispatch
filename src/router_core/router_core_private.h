@@ -368,6 +368,7 @@ struct qdr_delivery_t {
     qd_iterator_t          *to_addr;
     qd_iterator_t          *origin;
     uint64_t                disposition;
+    uint32_t                ingress_time;
     pn_data_t              *extension_state;
     qdr_error_t            *error;
     bool                    settled;

@@ -1018,6 +1018,11 @@ static void qdr_link_deliver_CT(qdr_core_t *core, qdr_action_t *action, bool dis
     qdr_link_t     *link = dlv->link;
 
     //
+    // Record the ingress time so we can track the age of this delivery.
+    //
+    dlv->ingress_time = core->uptime_ticks;
+
+    //
     // If the link is an edge link, mark this delivery as via-edge
     //
     dlv->via_edge = link->edge;
