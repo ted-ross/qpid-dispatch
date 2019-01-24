@@ -608,6 +608,17 @@ static void qdr_delete_delivery_internal_CT(qdr_core_t *core, qdr_delivery_t *de
                 core->modified_deliveries++;
         }
 
+        uint32_t delay = core->uptime_ticks - delivery->ingress_time;
+        if (delay > 10) {
+            link->deliveries_delayed_10sec++;
+            if (link->link_direction ==  QD_INCOMING)
+                core->deliveries_delayed_10sec++;
+        } else if (delay > 1) {
+            link->deliveries_delayed_1sec++;
+            if (link->link_direction ==  QD_INCOMING)
+                core->deliveries_delayed_1sec++;
+        }
+
         if (qd_bitmask_valid_bit_value(delivery->ingress_index) && link->ingress_histogram)
             link->ingress_histogram[delivery->ingress_index]++;    }
 

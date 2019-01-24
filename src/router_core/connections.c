@@ -883,10 +883,11 @@ static void qdr_link_cleanup_CT(qdr_core_t *core, qdr_connection_t *conn, qdr_li
     // Log the link closure
     //
     qd_log(core->log, QD_LOG_INFO, "[C%"PRIu64"][L%"PRIu64"] %s: del=%"PRIu64" presett=%"PRIu64" psdrop=%"PRIu64
-           " acc=%"PRIu64" rej=%"PRIu64" rel=%"PRIu64" mod=%"PRIu64,
+           " acc=%"PRIu64" rej=%"PRIu64" rel=%"PRIu64" mod=%"PRIu64" delay1=%"PRIu64" delay10=%"PRIu64,
            conn->identity, link->identity, log_text, link->total_deliveries, link->presettled_deliveries,
            link->dropped_presettled_deliveries, link->accepted_deliveries, link->rejected_deliveries,
-           link-> released_deliveries, link->modified_deliveries);
+           link->released_deliveries, link->modified_deliveries, link->deliveries_delayed_1sec,
+           link->deliveries_delayed_10sec);
 
     free_qdr_link_t(link);
 }
@@ -1223,12 +1224,7 @@ static void qdr_connection_closed_CT(qdr_core_t *core, qdr_action_t *action, boo
         //
         // Clean up the link and all its associated state.
         //
-<<<<<<< HEAD
-        qdr_link_cleanup_CT(core, conn, link); // link_cleanup disconnects and frees the ref.
-=======
         qdr_link_cleanup_CT(core, conn, link, "Link closed due to connection loss"); // link_cleanup disconnects and frees the ref.
-        free_qdr_link_t(link);
->>>>>>> NO-JIRA - Added link-level logging at the INFO level, including full terminus information and terminal stats
         link_ref = DEQ_HEAD(conn->links);
     }
 
@@ -1624,14 +1620,8 @@ static void qdr_link_inbound_detach_CT(qdr_core_t *core, qdr_action_t *action, b
             //
             // If the link is completely detached, release its resources
             //
-            if (link->detach_send_done) {
-<<<<<<< HEAD
-                qdr_link_cleanup_CT(core, conn, link);
-=======
+            if (link->detach_send_done)
                 qdr_link_cleanup_CT(core, conn, link, "Link detached");
-                free_qdr_link_t(link);
->>>>>>> NO-JIRA - Added link-level logging at the INFO level, including full terminus information and terminal stats
-            }
 
             return;
         }
@@ -1723,21 +1713,11 @@ static void qdr_link_inbound_detach_CT(qdr_core_t *core, qdr_action_t *action, b
             qdr_link_outbound_detach_CT(core, link, 0, QDR_CONDITION_NONE, dt == QD_CLOSED);
         } else {
             // no detach can be sent out because the connection was lost
-<<<<<<< HEAD
-            qdr_link_cleanup_CT(core, conn, link);
-        }
-    } else if (link->detach_send_done) {  // detach count indicates detach has been scheduled
-        // I/O thread is finished sending detach, ok to free link now
-        qdr_link_cleanup_CT(core, conn, link);
-=======
             qdr_link_cleanup_CT(core, conn, link, "Link lost");
-            free_qdr_link_t(link);
         }
     } else if (link->detach_send_done) {  // detach count indicates detach has been scheduled
         // I/O thread is finished sending detach, ok to free link now
         qdr_link_cleanup_CT(core, conn, link, "Link detached");
-        free_qdr_link_t(link);
->>>>>>> NO-JIRA - Added link-level logging at the INFO level, including full terminus information and terminal stats
     }
 
     //
@@ -1765,12 +1745,7 @@ static void qdr_link_detach_sent_CT(qdr_core_t *core, qdr_action_t *action, bool
         link->detach_send_done = true;
         if (link->conn && link->detach_received) {
             // link is fully detached
-<<<<<<< HEAD
-            qdr_link_cleanup_CT(core, link->conn, link);
-=======
             qdr_link_cleanup_CT(core, link->conn, link, "Link detached");
-            free_qdr_link_t(link);
->>>>>>> NO-JIRA - Added link-level logging at the INFO level, including full terminus information and terminal stats
         }
     }
 }

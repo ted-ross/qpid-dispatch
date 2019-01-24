@@ -42,8 +42,10 @@
 #define QDR_LINK_REJECTED_COUNT           18
 #define QDR_LINK_RELEASED_COUNT           19
 #define QDR_LINK_MODIFIED_COUNT           20
-#define QDR_LINK_INGRESS_HISTOGRAM        21
-#define QDR_LINK_PRIORITY                 22
+#define QDR_LINK_DELAYED_1SEC             21
+#define QDR_LINK_DELAYED_10SEC            22
+#define QDR_LINK_INGRESS_HISTOGRAM        23
+#define QDR_LINK_PRIORITY                 24
 
 const char *qdr_link_columns[] =
     {"name",
@@ -67,6 +69,8 @@ const char *qdr_link_columns[] =
      "rejectedCount",
      "releasedCount",
      "modifiedCount",
+     "deliveriesDelayed1Sec",
+     "deliveriesDelayed10Sec",
      "ingressHistogram",
      "priority",
      0};
@@ -211,6 +215,14 @@ static void qdr_agent_write_column_CT(qd_composed_field_t *body, int col, qdr_li
 
     case QDR_LINK_MODIFIED_COUNT:
         qd_compose_insert_ulong(body, link->modified_deliveries);
+        break;
+
+    case QDR_LINK_DELAYED_1SEC:
+        qd_compose_insert_ulong(body, link->deliveries_delayed_1sec);
+        break;
+
+    case QDR_LINK_DELAYED_10SEC:
+        qd_compose_insert_ulong(body, link->deliveries_delayed_10sec);
         break;
 
     case QDR_LINK_INGRESS_HISTOGRAM:

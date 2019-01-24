@@ -456,6 +456,8 @@ struct qdr_link_t {
     uint64_t  rejected_deliveries;
     uint64_t  released_deliveries;
     uint64_t  modified_deliveries;
+    uint64_t  deliveries_delayed_1sec;
+    uint64_t  deliveries_delayed_10sec;
     uint64_t *ingress_histogram;
     uint8_t   priority;
 };
@@ -823,19 +825,19 @@ struct qdr_core_t {
 
 
     // Overall delivery counters
-    uint64_t           presettled_deliveries;
-    uint64_t           dropped_presettled_deliveries;
-    uint64_t           accepted_deliveries;
-    uint64_t           rejected_deliveries;
-    uint64_t           released_deliveries;
-    uint64_t           modified_deliveries;
-    uint64_t           deliveries_ingress;
-    uint64_t           deliveries_egress;
-    uint64_t           deliveries_transit;
-    uint64_t           deliveries_egress_route_container;
-    uint64_t           deliveries_ingress_route_container;
-
-
+    uint64_t  presettled_deliveries;
+    uint64_t  dropped_presettled_deliveries;
+    uint64_t  accepted_deliveries;
+    uint64_t  rejected_deliveries;
+    uint64_t  released_deliveries;
+    uint64_t  modified_deliveries;
+    uint64_t  deliveries_ingress;
+    uint64_t  deliveries_egress;
+    uint64_t  deliveries_transit;
+    uint64_t  deliveries_egress_route_container;
+    uint64_t  deliveries_ingress_route_container;
+    uint64_t  deliveries_delayed_1sec;
+    uint64_t  deliveries_delayed_10sec;
 };
 
 struct qdr_terminus_t {

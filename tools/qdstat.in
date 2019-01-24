@@ -321,6 +321,11 @@ class BusManager(Node):
             rows.append(('Rejected Count', router.rejectedDeliveries))
             rows.append(('Released Count', router.releasedDeliveries))
             rows.append(('Modified Count', router.modifiedDeliveries))
+            try:
+                rows.append(('Deliveries Delayed > 1sec', router.deliveriesDelayed1Sec))
+                rows.append(('Deliveries Delayed > 10sec', router.deliveriesDelayed10Sec))
+            except:
+                pass
             rows.append(('Ingress Count', router.deliveriesIngress))
             rows.append(('Egress Count', router.deliveriesEgress))
             rows.append(('Transit Count', router.deliveriesTransit))
@@ -351,12 +356,13 @@ class BusManager(Node):
         cols = ('linkType', 'linkDir', 'connectionId', 'identity', 'peer', 'owningAddr',
                 'capacity', 'undeliveredCount', 'unsettledCount', 'deliveryCount',
                 'presettledCount', 'droppedPresettledCount', 'acceptedCount', 'rejectedCount', 'releasedCount',
-                'modifiedCount', 'adminStatus', 'operStatus', 'linkName', 'priority')
+                'modifiedCount', 'deliveriesDelayed1Sec', 'deliveriesDelayed10Sec', 'adminStatus', 'operStatus', 'linkName', 'priority')
 
         objects = self.query('org.apache.qpid.dispatch.router.link', cols, limit=self.opts.limit)
 
         has_dropped_presettled_count = False
         has_priority = False
+        has_delayed  = False
 
         if objects:
             first_row = objects[0]
@@ -365,14 +371,15 @@ class BusManager(Node):
                     has_dropped_presettled_count = True
                 if hasattr(first_row, 'priority'):
                     has_priority = True
+                if hasattr(first_row, 'deliveriesDelayed1Sec'):
+                    has_delayed = True
 
         if has_priority:
             heads.append(Header("pri"))
         heads.append(Header("undel"))
         heads.append(Header("unsett"))
-        heads.append(Header("del"))
+        heads.append(Header("deliv"))
         heads.append(Header("presett"))
-
 
         if has_dropped_presettled_count:
             heads.append(Header("psdrop"))
@@ -381,6 +388,8 @@ class BusManager(Node):
         heads.append(Header("rej"))
         heads.append(Header("rel"))
         heads.append(Header("mod"))
+        if has_delayed:
+            heads.append(Header("delay"))
         heads.append(Header("admin"))
         heads.append(Header("oper"))
         if self.opts.verbose:
@@ -409,6 +418,8 @@ class BusManager(Node):
             row.append(link.rejectedCount)
             row.append(link.releasedCount)
             row.append(link.modifiedCount)
+            if has_delayed:
+                row.append(link.deliveriesDelayed1Sec + link.deliveriesDelayed10Sec)
             row.append(link.adminStatus)
             row.append(link.operStatus)
             if self.opts.verbose:
