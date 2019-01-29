@@ -502,15 +502,16 @@ class BusManager(Node):
 
         if has_priority:
             heads.append(Header("pri"))
-        heads.append(Header("in-proc", Header.COMMAS))
+        if self.opts.verbose:
+            heads.append(Header("in-proc", Header.COMMAS))
         heads.append(Header("local", Header.COMMAS))
         heads.append(Header("remote", Header.COMMAS))
-        heads.append(Header("cntnr", Header.COMMAS))
         heads.append(Header("in", Header.COMMAS))
         heads.append(Header("out", Header.COMMAS))
         heads.append(Header("thru", Header.COMMAS))
-        heads.append(Header("to-proc", Header.COMMAS))
-        heads.append(Header("from-proc", Header.COMMAS))
+        if self.opts.verbose:
+            heads.append(Header("to-proc", Header.COMMAS))
+            heads.append(Header("from-proc", Header.COMMAS))
 
         for addr in objects:
             row = []
@@ -520,15 +521,16 @@ class BusManager(Node):
             row.append(addr.distribution)
             if has_priority:
                 row.append(addr.priority if addr.priority >= 0 else "")
-            row.append(addr.inProcess)
-            row.append(addr.subscriberCount)
+            if self.opts.verbose:
+                row.append(addr.inProcess)
+            row.append(addr.containerCount if addr.name[0] in 'CDEF' else addr.subscriberCount)
             row.append(addr.remoteCount)
-            row.append(addr.containerCount)
             row.append(addr.deliveriesIngress)
             row.append(addr.deliveriesEgress)
             row.append(addr.deliveriesTransit)
-            row.append(addr.deliveriesToContainer)
-            row.append(addr.deliveriesFromContainer)
+            if self.opts.verbose:
+                row.append(addr.deliveriesToContainer)
+                row.append(addr.deliveriesFromContainer)
             rows.append(row)
         title = "Router Addresses"
         sorter = Sorter(heads, rows, 'addr', 0, True)

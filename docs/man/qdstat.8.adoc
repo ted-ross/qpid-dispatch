@@ -212,13 +212,10 @@ in-proc::
 The number of in-process consumers for this address.
 
 local::
-For this router, the number of local consumers for this address.
+For this router, the number of local consumers for this address, or for link-routed addresses, the number of locally-attached containers that are destinations for this address.
 
 remote::
 The number of remote routers that have at least one consumer for this address.
-
-cntnr::
-The number of locally-attached containers that are destinations for link routes on this address.
 
 in::
 The number of deliveries for this address that entered the network on this router.
