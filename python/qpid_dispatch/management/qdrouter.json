@@ -1456,6 +1456,11 @@
                     "graph": true,
                     "description": "The total number of settled deliveries that were held in the router for more than 10 seconds."
                 },
+                "settleRate": {
+                    "type": "integer",
+                    "graph": true,
+                    "description": "The average rate (over five seconds) of settlement in deliveries-per-second.  This is included for egress links only."
+                },
                 "ingressHistogram": {
                     "type": "list",
                     "description": "For outgoing links on connections with 'normal' role.  This histogram shows the number of settled deliveries on the link that ingressed the network at each interior router node."

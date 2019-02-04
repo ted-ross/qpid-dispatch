@@ -620,7 +620,23 @@ static void qdr_delete_delivery_internal_CT(qdr_core_t *core, qdr_delivery_t *de
         }
 
         if (qd_bitmask_valid_bit_value(delivery->ingress_index) && link->ingress_histogram)
-            link->ingress_histogram[delivery->ingress_index]++;    }
+            link->ingress_histogram[delivery->ingress_index]++;
+
+        //
+        // Compute the settlement rate
+        //
+        uint32_t delta_time = core->uptime_ticks - link->core_ticks;
+        if (delta_time > 0) {
+            if (delta_time > QDR_LINK_RATE_DEPTH)
+                delta_time = QDR_LINK_RATE_DEPTH;
+            for (uint8_t delta_slots = 0; delta_slots < delta_time; delta_slots++) {
+                link->rate_cursor = (link->rate_cursor + 1) % QDR_LINK_RATE_DEPTH;
+                link->settled_deliveries[link->rate_cursor] = 0;
+            }
+            link->core_ticks = core->uptime_ticks;
+        }
+        link->settled_deliveries[link->rate_cursor]++;
+    }
 
     //
     // Free all the peer qdr_delivery_ref_t references

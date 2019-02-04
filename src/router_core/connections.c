@@ -476,6 +476,7 @@ qdr_link_t *qdr_link_first_attach(qdr_connection_t *conn,
     link->credit_pending = conn->link_capacity;
     link->admin_enabled  = true;
     link->oper_status    = QDR_LINK_OPER_DOWN;
+    link->core_ticks     = conn->core->uptime_ticks;
     link->terminus_survives_disconnect = qdr_terminus_survives_disconnect(local_terminus);
 
     link->strip_annotations_in  = conn->strip_annotations_in;
@@ -920,9 +921,10 @@ qdr_link_t *qdr_create_link_CT(qdr_core_t       *core,
     qdr_generate_link_name("qdlink", link->name, QD_DISCRIMINATOR_SIZE + 8);
     link->admin_enabled  = true;
     link->oper_status    = QDR_LINK_OPER_DOWN;
-    link->insert_prefix = 0;
-    link->strip_prefix = 0;
-    link->attach_count = 1;
+    link->insert_prefix  = 0;
+    link->strip_prefix   = 0;
+    link->attach_count   = 1;
+    link->core_ticks     = core->uptime_ticks;
 
     link->strip_annotations_in  = conn->strip_annotations_in;
     link->strip_annotations_out = conn->strip_annotations_out;

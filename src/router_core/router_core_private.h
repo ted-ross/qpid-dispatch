@@ -407,6 +407,8 @@ typedef enum {
     QDR_LINK_OPER_IDLE
 } qdr_link_oper_status_t;
 
+#define QDR_LINK_RATE_DEPTH 5
+
 struct qdr_link_t {
     DEQ_LINKS(qdr_link_t);
     qdr_core_t              *core;
@@ -458,8 +460,11 @@ struct qdr_link_t {
     uint64_t  modified_deliveries;
     uint64_t  deliveries_delayed_1sec;
     uint64_t  deliveries_delayed_10sec;
+    uint64_t  settled_deliveries[QDR_LINK_RATE_DEPTH];
     uint64_t *ingress_histogram;
     uint8_t   priority;
+    uint8_t   rate_cursor;
+    uint32_t  core_ticks;
 };
 
 ALLOC_DECLARE(qdr_link_t);

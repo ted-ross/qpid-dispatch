@@ -356,7 +356,8 @@ class BusManager(Node):
         cols = ('linkType', 'linkDir', 'connectionId', 'identity', 'peer', 'owningAddr',
                 'capacity', 'undeliveredCount', 'unsettledCount', 'deliveryCount',
                 'presettledCount', 'droppedPresettledCount', 'acceptedCount', 'rejectedCount', 'releasedCount',
-                'modifiedCount', 'deliveriesDelayed1Sec', 'deliveriesDelayed10Sec', 'adminStatus', 'operStatus', 'linkName', 'priority')
+                'modifiedCount', 'deliveriesDelayed1Sec', 'deliveriesDelayed10Sec', 'adminStatus', 'operStatus',
+                'linkName', 'priority', 'settleRate')
 
         objects = self.query('org.apache.qpid.dispatch.router.link', cols, limit=self.opts.limit)
 
@@ -390,9 +391,10 @@ class BusManager(Node):
         heads.append(Header("mod"))
         if has_delayed:
             heads.append(Header("delay"))
-        heads.append(Header("admin"))
-        heads.append(Header("oper"))
+            heads.append(Header("rate"))
         if self.opts.verbose:
+            heads.append(Header("admin"))
+            heads.append(Header("oper"))
             heads.append(Header("name"))
 
         for link in objects:
@@ -420,9 +422,10 @@ class BusManager(Node):
             row.append(link.modifiedCount)
             if has_delayed:
                 row.append(link.deliveriesDelayed1Sec + link.deliveriesDelayed10Sec)
-            row.append(link.adminStatus)
-            row.append(link.operStatus)
+                row.append(link.settleRate)
             if self.opts.verbose:
+                row.append(link.adminStatus)
+                row.append(link.operStatus)
                 row.append(link.linkName)
             rows.append(row)
         title = "Router Links"
