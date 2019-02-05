@@ -582,17 +582,22 @@ static void qdr_delete_delivery_internal_CT(qdr_core_t *core, qdr_delivery_t *de
     }
 
     if (link) {
+        bool do_rate = false;
+
         if (delivery->presettled) {
+            do_rate = delivery->disposition != PN_RELEASED;
             link->presettled_deliveries++;
             if (link->link_direction ==  QD_INCOMING && link->link_type == QD_LINK_ENDPOINT)
                 core->presettled_deliveries++;
         }
         else if (delivery->disposition == PN_ACCEPTED) {
+            do_rate = true;
             link->accepted_deliveries++;
             if (link->link_direction ==  QD_INCOMING)
                 core->accepted_deliveries++;
         }
         else if (delivery->disposition == PN_REJECTED) {
+            do_rate = true;
             link->rejected_deliveries++;
             if (link->link_direction ==  QD_INCOMING)
                 core->rejected_deliveries++;
@@ -625,17 +630,19 @@ static void qdr_delete_delivery_internal_CT(qdr_core_t *core, qdr_delivery_t *de
         //
         // Compute the settlement rate
         //
-        uint32_t delta_time = core->uptime_ticks - link->core_ticks;
-        if (delta_time > 0) {
-            if (delta_time > QDR_LINK_RATE_DEPTH)
-                delta_time = QDR_LINK_RATE_DEPTH;
-            for (uint8_t delta_slots = 0; delta_slots < delta_time; delta_slots++) {
-                link->rate_cursor = (link->rate_cursor + 1) % QDR_LINK_RATE_DEPTH;
-                link->settled_deliveries[link->rate_cursor] = 0;
+        if (do_rate) {
+            uint32_t delta_time = core->uptime_ticks - link->core_ticks;
+            if (delta_time > 0) {
+                if (delta_time > QDR_LINK_RATE_DEPTH)
+                    delta_time = QDR_LINK_RATE_DEPTH;
+                for (uint8_t delta_slots = 0; delta_slots < delta_time; delta_slots++) {
+                    link->rate_cursor = (link->rate_cursor + 1) % QDR_LINK_RATE_DEPTH;
+                    link->settled_deliveries[link->rate_cursor] = 0;
+                }
+                link->core_ticks = core->uptime_ticks;
             }
-            link->core_ticks = core->uptime_ticks;
+            link->settled_deliveries[link->rate_cursor]++;
         }
-        link->settled_deliveries[link->rate_cursor]++;
     }
 
     //

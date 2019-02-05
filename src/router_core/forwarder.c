@@ -186,6 +186,7 @@ static void qdr_forward_drop_presettled_CT_LH(qdr_core_t *core, qdr_link_t *link
                 free_qdr_link_work_t(dlv->link_work);
                 dlv->link_work = 0;
             }
+            dlv->disposition = PN_RELEASED;
             qdr_delivery_decref_CT(core, dlv, "qdr_forward_drop_presettled_CT_LH - remove from link-work list");
 
             // Increment the presettled_dropped_deliveries on the out_link
