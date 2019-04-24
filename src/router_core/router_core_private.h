@@ -564,10 +564,12 @@ struct qdr_address_config_t {
     uint64_t                identity;
     uint32_t                ref_count;
     char                   *pattern;
+    char                   *alternate_addr;
     bool                    is_prefix;
     qd_address_treatment_t  treatment;
     int                     in_phase;
     int                     out_phase;
+    int                     alternate_phase;
     int                     priority;
 };
 
