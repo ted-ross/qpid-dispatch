@@ -1167,6 +1167,12 @@
                     "description": "All messages sent to this address which lack an intrinsic priority will be assigned this priority.",
                     "create": true,
                     "required": false
+                },
+                "undeliverableSuffix": {
+                    "type": "string",
+                    "description": "Optional suffix to place onto the address and redeliver if undeliverable.  If not specified, undeliverable messages are released.  If specified, undeliverable messages shall be re-delivered to a new address that is the same as the original address with the suffix append to the end.",
+                    "create": true,
+                    "required": false
                 }
             }
         },

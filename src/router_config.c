@@ -54,6 +54,7 @@ qd_error_t qd_router_configure_address(qd_router_t *router, qd_entity_t *entity)
     char *pattern = 0;
     char *distrib = 0;
     char *prefix  = 0;
+    char *undel_suffix = 0;
 
     do {
         name = qd_entity_opt_string(entity, "name", 0);             QD_ERROR_BREAK();
@@ -79,6 +80,8 @@ qd_error_t qd_router_configure_address(qd_router_t *router, qd_entity_t *entity)
         long  in_phase  = qd_entity_opt_long(entity, "ingressPhase", -1);
         long  out_phase = qd_entity_opt_long(entity, "egressPhase", -1);
         long  priority  = qd_entity_opt_long(entity, "priority",    -1);
+
+        undel_suffix = qd_entity_opt_string(entity, "undeliverableSuffix", 0);
 
         //
         // Formulate this configuration create it through the core management API.
@@ -121,6 +124,11 @@ qd_error_t qd_router_configure_address(qd_router_t *router, qd_entity_t *entity)
         if (out_phase >= 0) {
             qd_compose_insert_string(body, "egressPhase");
             qd_compose_insert_int(body, out_phase);
+        }
+
+        if (undel_suffix) {
+            qd_compose_insert_string(body, "undeliverableSuffix");
+            qd_compose_insert_string(body, undel_suffix);
         }
 
         qd_compose_end_map(body);

@@ -32,6 +32,7 @@
 #define QDR_CONFIG_ADDRESS_OUT_PHASE     7
 #define QDR_CONFIG_ADDRESS_PATTERN       8
 #define QDR_CONFIG_ADDRESS_PRIORITY      9
+#define QDR_CONFIG_ADDRESS_UNDEL_SUFFIX  10
 
 const char *qdr_config_address_columns[] =
     {"name",
@@ -44,6 +45,7 @@ const char *qdr_config_address_columns[] =
      "egressPhase",
      "pattern",
      "priority",
+     "undeliverableSuffix",
      0};
 
 const char *CONFIG_ADDRESS_TYPE = "org.apache.qpid.dispatch.router.config.address";
@@ -125,6 +127,12 @@ static void qdr_config_address_insert_column_CT(qdr_address_config_t *addr, int 
     case QDR_CONFIG_ADDRESS_PRIORITY:
         qd_compose_insert_int(body, addr->priority);
         break;
+
+    case QDR_CONFIG_ADDRESS_UNDEL_SUFFIX:
+        if (!!addr->undeliverable_suffix)
+            qd_compose_insert_string(body, addr->undeliverable_suffix);
+        else
+            qd_compose_insert_null(body);
     }
 }
 
@@ -347,6 +355,7 @@ void qdra_config_address_create_CT(qdr_core_t         *core,
         qd_parsed_field_t *in_phase_field  = qd_parse_value_by_key(in_body, qdr_config_address_columns[QDR_CONFIG_ADDRESS_IN_PHASE]);
         qd_parsed_field_t *out_phase_field = qd_parse_value_by_key(in_body, qdr_config_address_columns[QDR_CONFIG_ADDRESS_OUT_PHASE]);
         qd_parsed_field_t *priority_field  = qd_parse_value_by_key(in_body, qdr_config_address_columns[QDR_CONFIG_ADDRESS_PRIORITY]);
+        qd_parsed_field_t *undel_suffix_field = qd_parse_value_by_key(in_body, qdr_config_address_columns[QDR_CONFIG_ADDRESS_UNDEL_SUFFIX]);
 
         //
         // Either a prefix or a pattern field is mandatory.  Prefix and pattern
@@ -429,7 +438,7 @@ void qdra_config_address_create_CT(qdr_core_t         *core,
         //
 
         addr = new_qdr_address_config_t();
-        DEQ_ITEM_INIT(addr);
+        ZERO(addr);
         addr->ref_count = 1; // Represents the reference from the addr_config list
         addr->name      = name ? (char*) qd_iterator_copy(name) : 0;
         addr->identity  = qdr_identifier(core);
@@ -440,6 +449,9 @@ void qdra_config_address_create_CT(qdr_core_t         *core,
         addr->pattern   = pattern;
         addr->priority  = priority;
         pattern = 0;
+
+        if (undel_suffix_field)
+            addr->undeliverable_suffix = (char*) qd_iterator_copy(qd_parse_raw(undel_suffix_field));
 
         qd_iterator_reset_view(iter, ITER_VIEW_ALL);
         qd_parse_tree_add_pattern(core->addr_parse_tree, iter, addr);
