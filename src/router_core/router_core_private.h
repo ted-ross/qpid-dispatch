@@ -511,6 +511,12 @@ struct qdr_address_t {
     uint64_t                   cost_epoch;
 
     //
+    // State for tracking alternate destinations for undeliverable deliveries
+    //
+    qdr_address_t *alternate;     ///< Pointer to this address's alternate destination
+    bool           is_alternate;  ///< True iff this address is an alternate to a different address
+
+    //
     // State for "closest" treatment
     //
     qd_bitmask_t *closest_remotes;

@@ -108,6 +108,48 @@ static void qdr_generate_mobile_addr(qdr_core_t *core, char *buffer, size_t leng
 
 
 /**
+ * Search for, and possibly create, the alternate address based on the
+ * undeliverable_suffix in the address's configuration.  This will be used in
+ * the forwarding paths to handle undeliverable messages with alternate destinations.
+ */
+static void qdr_setup_alternate_CT(qdr_core_t *core, qdr_address_t *addr, qdr_address_config_t *addr_config)
+{
+#define QDR_SETUP_ALTERNATE_BUFFER_SIZE 256
+    char  buffer[QDR_SETUP_ALTERNATE_BUFFER_SIZE];
+    char *alt_text       = buffer;
+    bool  buffer_on_heap = false;
+
+    char   *address_text = (char*) qd_hash_key_by_handle(addr->hash_handle);
+    size_t  alt_length   = strlen(address_text) + strlen(addr_config->undeliverable_suffix) + 1;
+
+    if (alt_length > QDR_SETUP_ALTERNATE_BUFFER_SIZE) {
+        alt_text       = (char*) malloc(alt_length);
+        buffer_on_heap = true;
+    }
+
+    strcpy(alt_text, address_text);
+    strcat(alt_text, addr_config->undeliverable_suffix);
+
+    qd_iterator_t *alt_iter = qd_iterator_string(alt_text, ITER_VIEW_ALL);
+    qdr_address_t *alt_addr = 0;
+
+    qd_hash_retrieve(core->addr_hash, alt_iter, (void**) &alt_addr);
+    if (!alt_addr) {
+        alt_addr = qdr_address_CT(core, QD_TREATMENT_ANYCAST_BALANCED, 0);
+        qd_hash_insert(core->addr_hash, alt_iter, alt_addr, &alt_addr->hash_handle);
+        DEQ_INSERT_TAIL(core->addrs, alt_addr);
+    }
+
+    addr->alternate        = alt_addr;
+    alt_addr->is_alternate = true;
+
+    qd_iterator_free(alt_iter);
+    if (buffer_on_heap)
+        free(alt_text);
+}
+
+
+/**
  * qdr_lookup_terminus_address_CT
  *
  * Lookup a terminus address in the route table and possibly create a new address
@@ -279,9 +321,15 @@ static qdr_address_t *qdr_lookup_terminus_address_CT(qdr_core_t       *core,
 
         addr = qdr_address_CT(core, treat, addr_config);
         if (addr) {
-            addr->config = addr_config;
             qd_hash_insert(core->addr_hash, iter, addr, &addr->hash_handle);
             DEQ_INSERT_TAIL(core->addrs, addr);
+
+            //
+            // If this address is configured with an undeliverable_suffix, set up the
+            // alternate address linkage.
+            //
+            if (!!addr_config && !!addr_config->undeliverable_suffix)
+                qdr_setup_alternate_CT(core, addr, addr_config);
         }
 
         if (!addr && treat == QD_TREATMENT_UNAVAILABLE)

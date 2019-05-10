@@ -333,12 +333,13 @@ qdr_address_t *qdr_address_CT(qdr_core_t *core, qd_address_treatment_t treatment
 {
     if (treatment == QD_TREATMENT_UNAVAILABLE)
         return 0;
+
     qdr_address_t *addr = new_qdr_address_t();
     ZERO(addr);
-    addr->config    = config;
-    addr->treatment = treatment;
-    addr->forwarder = qdr_forwarder_CT(core, treatment);
-    addr->rnodes    = qd_bitmask(0);
+    addr->config     = config;
+    addr->treatment  = treatment;
+    addr->forwarder  = qdr_forwarder_CT(core, treatment);
+    addr->rnodes     = qd_bitmask(0);
     addr->add_prefix = 0;
     addr->del_prefix = 0;
     addr->priority   = -1;
@@ -517,6 +518,11 @@ void qdr_core_remove_address(qdr_core_t *core, qdr_address_t *addr)
     while (cr) {
         qdr_del_connection_ref(&addr->conns, cr->conn);
         cr = DEQ_HEAD(addr->conns);
+    }
+
+    if (!!addr->alternate) {
+        addr->alternate->is_alternate = false;
+        qdr_check_addr_CT(core, addr->alternate);
     }
 
     free(addr->add_prefix);

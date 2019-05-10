@@ -1171,7 +1171,8 @@ void qdr_check_addr_CT(qdr_core_t *core, qdr_address_t *addr)
         && addr->ref_count == 0
         && !addr->block_deletion
         && addr->tracked_deliveries == 0
-        && addr->core_endpoint == 0) {
+        && addr->core_endpoint == 0
+        && !addr->is_alternate) {
         qdr_core_remove_address(core, addr);
     }
 }
