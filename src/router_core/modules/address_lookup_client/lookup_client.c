@@ -140,8 +140,14 @@ static void qdr_setup_alternate_CT(qdr_core_t *core, qdr_address_t *addr, qdr_ad
         DEQ_INSERT_TAIL(core->addrs, alt_addr);
     }
 
-    addr->alternate        = alt_addr;
-    alt_addr->is_alternate = true;
+    if (alt_addr->alternate_for == 0) {
+        addr->alternate         = alt_addr;
+        alt_addr->alternate_for = addr;
+    } else
+        qd_log(core->log,
+               QD_LOG_WARNING,
+               "Alternate address for %s (%s) is already an alternate for another address",
+               address_text, alt_text);
 
     qd_iterator_free(alt_iter);
     if (buffer_on_heap)
@@ -328,7 +334,7 @@ static qdr_address_t *qdr_lookup_terminus_address_CT(qdr_core_t       *core,
             // If this address is configured with an undeliverable_suffix, set up the
             // alternate address linkage.
             //
-            if (!!addr_config && !!addr_config->undeliverable_suffix)
+            if (!!addr_config && !!addr_config->undeliverable_suffix && !addr->alternate)
                 qdr_setup_alternate_CT(core, addr, addr_config);
         }
 

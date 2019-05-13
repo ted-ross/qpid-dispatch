@@ -514,7 +514,7 @@ struct qdr_address_t {
     // State for tracking alternate destinations for undeliverable deliveries
     //
     qdr_address_t *alternate;     ///< Pointer to this address's alternate destination
-    bool           is_alternate;  ///< True iff this address is an alternate to a different address
+    qdr_address_t *alternate_for; ///< Pointer to the address that this is an alternate for
 
     //
     // State for "closest" treatment

@@ -521,7 +521,7 @@ void qdr_core_remove_address(qdr_core_t *core, qdr_address_t *addr)
     }
 
     if (!!addr->alternate) {
-        addr->alternate->is_alternate = false;
+        addr->alternate->alternate_for = 0;
         qdr_check_addr_CT(core, addr->alternate);
     }
 

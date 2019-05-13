@@ -802,13 +802,7 @@ void qdr_drain_inbound_undelivered_CT(qdr_core_t *core, qdr_link_t *link, qdr_ad
  */
 void qdr_addr_start_inlinks_CT(qdr_core_t *core, qdr_address_t *addr)
 {
-    //
-    // If there aren't any inlinks, there's no point in proceeding.
-    //
-    if (DEQ_SIZE(addr->inlinks) == 0)
-        return;
-
-    if (qdr_addr_path_count_CT(addr) == 1) {
+    if (qdr_addr_path_count_CT(addr) == 1 || (!!addr->alternate && qdr_addr_path_count_CT(addr->alternate) == 1)) {
         qdr_link_ref_t *ref = DEQ_HEAD(addr->inlinks);
         while (ref) {
             qdr_link_t *link = ref->link;
@@ -826,5 +820,8 @@ void qdr_addr_start_inlinks_CT(qdr_core_t *core, qdr_address_t *addr)
 
             ref = DEQ_NEXT(ref);
         }
+
+        if (!!addr->alternate_for)
+            qdr_addr_start_inlinks_CT(core, addr->alternate_for);
     }
 }
