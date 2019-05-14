@@ -386,6 +386,9 @@ static void qdr_link_flow_CT(qdr_core_t *core, qdr_action_t *action, bool discar
  */
 static long qdr_addr_path_count_CT(qdr_address_t *addr)
 {
+    if (!addr)
+        return 0;
+
     long rc = ((long) DEQ_SIZE(addr->subscriptions)
                + (long) DEQ_SIZE(addr->rlinks)
                + (long) qd_bitmask_cardinality(addr->rnodes));
@@ -406,14 +409,15 @@ static void qdr_link_forward_CT(qdr_core_t *core, qdr_link_t *link, qdr_delivery
     if (dlv_link->link_type == QD_LINK_ENDPOINT)
         core->deliveries_ingress++;
 
-    if (addr && addr == link->owning_addr && qdr_addr_path_count_CT(addr) == 0) {
+    if (addr
+        && addr == link->owning_addr
+        && qdr_addr_path_count_CT(addr) == 0
+        && qdr_addr_path_count_CT(addr->alternate) == 0) {
         //
         // We are trying to forward a delivery on an address that has no outbound paths
         // AND the incoming link is targeted (not anonymous).
         //
-        // We shall release the delivery (it is currently undeliverable).  If the distribution is
-        // multicast or it's on an edge connection, we will replenish the credit.  Otherwise, we
-        // will allow the credit to drain.
+        // We shall release the delivery (it is currently undeliverable).
         //
         if (dlv->settled) {
             // Increment the presettled_dropped_deliveries on the in_link
@@ -437,6 +441,10 @@ static void qdr_link_forward_CT(qdr_core_t *core, qdr_link_t *link, qdr_delivery
                 qdr_link_issue_credit_CT(core, link, 0, true);
         }
 
+        //
+        // If the distribution is multicast or it's on an edge connection, we will replenish the credit.
+        // Otherwise, we will allow the credit to drain.
+        //
         if (link->edge || qdr_is_addr_treatment_multicast(link->owning_addr))
             qdr_link_issue_credit_CT(core, link, 1, false);
         else
@@ -463,6 +471,7 @@ static void qdr_link_forward_CT(qdr_core_t *core, qdr_link_t *link, qdr_delivery
         }
         link->total_deliveries++;
     }
+
     //
     // There is no address that we can send this delivery to, which means the addr was not found in our hastable. This
     // can be because there were no receivers or because the address was not defined in the config file.
@@ -472,6 +481,7 @@ static void qdr_link_forward_CT(qdr_core_t *core, qdr_link_t *link, qdr_delivery
         dlv->disposition = PN_REJECTED;
         dlv->error = qdr_error(QD_AMQP_COND_NOT_FOUND, "Deliveries cannot be sent to an unavailable address");
         qdr_delivery_push_CT(core, dlv);
+
         //
         // We will not detach this link because this could be anonymous sender. We don't know
         // which address the sender will be sending to next
@@ -487,10 +497,23 @@ static void qdr_link_forward_CT(qdr_core_t *core, qdr_link_t *link, qdr_delivery
     if (fanout == 0 && !dlv->multicast && link->owning_addr == 0 && dlv->to_addr != 0) {
         if (core->edge_conn_addr && link->conn->role != QDR_ROLE_EDGE_CONNECTION) {
             qdr_address_t *sender_address = core->edge_conn_addr(core->edge_context);
-            if (sender_address && sender_address != addr) {
+            if (sender_address && sender_address != addr)
                 fanout += qdr_forward_message_CT(core, sender_address, dlv->msg, dlv, false, link->link_type == QD_LINK_CONTROL);
-            }
         }
+    }
+
+    //
+    // If the fanout is still zero, check to see if there is an alternate address and
+    // route via the alternate if present.
+    //
+    if (fanout == 0 && !!addr && !!addr->alternate) {
+        const char          *key      = (const char*) qd_hash_key_by_handle(addr->alternate->hash_handle);
+        qd_composed_field_t *to_field = qd_compose_subfield(0);
+        qd_compose_insert_string(to_field, key + 2);
+        qd_message_set_to_override_annotation(dlv->msg, to_field);
+        if (key[1] != '0')
+            qd_message_set_phase_annotation(dlv->msg, key[1] - '0');
+        fanout = qdr_forward_message_CT(core, addr->alternate, dlv->msg, dlv, false, link->link_type == QD_LINK_CONTROL);
     }
 
     if (fanout == 0) {

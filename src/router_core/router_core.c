@@ -549,10 +549,15 @@ void qdr_core_bind_address_link_CT(qdr_core_t *core, qdr_address_t *addr, qdr_li
             qdrc_event_addr_raise(core, QDRC_EVENT_ADDR_TWO_DEST, addr);
     } else {  // link->link_direction == QD_INCOMING
         qdr_add_link_ref(&addr->inlinks, link, QDR_LINK_LIST_CLASS_ADDRESS);
-        if (DEQ_SIZE(addr->inlinks) == 1)
+        if (DEQ_SIZE(addr->inlinks) == 1) {
             qdrc_event_addr_raise(core, QDRC_EVENT_ADDR_BECAME_SOURCE, addr);
-        else if (DEQ_SIZE(addr->inlinks) == 2)
+            if (!!addr->alternate)
+                qdrc_event_addr_raise(core, QDRC_EVENT_ADDR_BECAME_SOURCE, addr->alternate);
+        } else if (DEQ_SIZE(addr->inlinks) == 2) {
             qdrc_event_addr_raise(core, QDRC_EVENT_ADDR_TWO_SOURCE, addr);
+            if (!!addr->alternate)
+                qdrc_event_addr_raise(core, QDRC_EVENT_ADDR_TWO_SOURCE, addr->alternate);
+        }
     }
 }
 
@@ -573,10 +578,15 @@ void qdr_core_unbind_address_link_CT(qdr_core_t *core, qdr_address_t *addr, qdr_
     } else {
         bool removed = qdr_del_link_ref(&addr->inlinks, link, QDR_LINK_LIST_CLASS_ADDRESS);
         if (removed) {
-            if (DEQ_SIZE(addr->inlinks) == 0)
+            if (DEQ_SIZE(addr->inlinks) == 0) {
                 qdrc_event_addr_raise(core, QDRC_EVENT_ADDR_NO_LONGER_SOURCE, addr);
-            else if (DEQ_SIZE(addr->inlinks) == 1)
+                if (!!addr->alternate)
+                    qdrc_event_addr_raise(core, QDRC_EVENT_ADDR_NO_LONGER_SOURCE, addr->alternate);
+            } else if (DEQ_SIZE(addr->inlinks) == 1) {
                 qdrc_event_addr_raise(core, QDRC_EVENT_ADDR_ONE_SOURCE, addr);
+                if (!!addr->alternate)
+                    qdrc_event_addr_raise(core, QDRC_EVENT_ADDR_ONE_SOURCE, addr->alternate);
+            }
         }
     }
 }

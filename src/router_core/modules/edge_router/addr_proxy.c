@@ -345,7 +345,7 @@ static void on_addr_event(void *context, qdrc_event_t event, qdr_address_t *addr
 
     case QDRC_EVENT_ADDR_BECAME_SOURCE :
         link_ref = DEQ_HEAD(addr->inlinks);
-        if (link_ref->link->conn != ap->edge_conn)
+        if (!link_ref || link_ref->link->conn != ap->edge_conn)
             add_outlink(ap, key, addr);
         break;
 
@@ -359,7 +359,7 @@ static void on_addr_event(void *context, qdrc_event_t event, qdr_address_t *addr
 
     case QDRC_EVENT_ADDR_ONE_SOURCE :
         link_ref = DEQ_HEAD(addr->inlinks);
-        if (link_ref->link->conn == ap->edge_conn)
+        if (!link_ref || link_ref->link->conn == ap->edge_conn)
             del_outlink(ap, addr);
         break;
 
