@@ -440,7 +440,11 @@ static void qdr_link_react_to_first_attach_CT(qdr_core_t       *core,
                 || DEQ_SIZE(addr->rlinks)
                 || qd_bitmask_cardinality(addr->rnodes)
                 || qdr_is_addr_treatment_multicast(addr)
-                || !!addr->exchange)) {
+                || !!addr->exchange
+                || (!!addr->alternate
+                    && (DEQ_SIZE(addr->alternate->subscriptions)
+                        || DEQ_SIZE(addr->alternate->rlinks)
+                        || qd_bitmask_cardinality(addr->alternate->rnodes))))) {
             qdr_link_issue_credit_CT(core, link, link->capacity, false);
         }
 
