@@ -282,6 +282,110 @@ class RouterTest(TestCase):
         test.run()
         self.assertEqual(None, test.error)
 
+    def test_25_switchover_same_edge(self):
+        test = SwitchoverTest(self.routers[2].addresses[0],
+                              self.routers[2].addresses[0],
+                              self.routers[2].addresses[0],
+                              'dest.25')
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_26_switchover_same_interior(self):
+        test = SwitchoverTest(self.routers[0].addresses[0],
+                              self.routers[0].addresses[0],
+                              self.routers[0].addresses[0],
+                              'dest.26')
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_27_switchover_local_edge_alt_remote_interior(self):
+        test = SwitchoverTest(self.routers[2].addresses[0],
+                              self.routers[0].addresses[0],
+                              self.routers[2].addresses[0],
+                              'dest.27')
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_28_switchover_local_edge_alt_remote_edge(self):
+        test = SwitchoverTest(self.routers[2].addresses[0],
+                              self.routers[4].addresses[0],
+                              self.routers[2].addresses[0],
+                              'dest.28')
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_29_switchover_local_edge_pri_remote_interior(self):
+        test = SwitchoverTest(self.routers[2].addresses[0],
+                              self.routers[2].addresses[0],
+                              self.routers[0].addresses[0],
+                              'dest.29')
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_30_switchover_local_interior_pri_remote_edge(self):
+        test = SwitchoverTest(self.routers[2].addresses[0],
+                              self.routers[2].addresses[0],
+                              self.routers[4].addresses[0],
+                              'dest.30')
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_31_switchover_local_interior_alt_remote_interior(self):
+        test = SwitchoverTest(self.routers[1].addresses[0],
+                              self.routers[0].addresses[0],
+                              self.routers[1].addresses[0],
+                              'dest.31')
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_32_switchover_local_interior_alt_remote_edge(self):
+        test = SwitchoverTest(self.routers[1].addresses[0],
+                              self.routers[3].addresses[0],
+                              self.routers[1].addresses[0],
+                              'dest.32')
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_33_switchover_local_interior_pri_remote_interior(self):
+        test = SwitchoverTest(self.routers[1].addresses[0],
+                              self.routers[1].addresses[0],
+                              self.routers[0].addresses[0],
+                              'dest.33')
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_34_switchover_local_interior_pri_remote_edge(self):
+        test = SwitchoverTest(self.routers[1].addresses[0],
+                              self.routers[1].addresses[0],
+                              self.routers[4].addresses[0],
+                              'dest.34')
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_35_switchover_mix_1(self):
+        test = SwitchoverTest(self.routers[0].addresses[0],
+                              self.routers[1].addresses[0],
+                              self.routers[2].addresses[0],
+                              'dest.35')
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_36_switchover_mix_2(self):
+        test = SwitchoverTest(self.routers[2].addresses[0],
+                              self.routers[1].addresses[0],
+                              self.routers[0].addresses[0],
+                              'dest.36')
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_37_switchover_mix_3(self):
+        test = SwitchoverTest(self.routers[2].addresses[0],
+                              self.routers[1].addresses[0],
+                              self.routers[4].addresses[0],
+                              'dest.37')
+        test.run()
+        self.assertEqual(None, test.error)
+
 
 class Timeout(object):
     def __init__(self, parent):
@@ -398,6 +502,82 @@ class ReceiverFirstTest(MessagingHandler):
 
     def on_released(self, event):
         self.n_rel += 1
+
+    def run(self):
+        Container(self).run()
+
+
+class SwitchoverTest(MessagingHandler):
+    def __init__(self, sender_host, primary_host, alternate_host, addr):
+        super(SwitchoverTest, self).__init__()
+        self.sender_host    = sender_host
+        self.primary_host   = primary_host
+        self.alternate_host = alternate_host
+        self.addr           = addr
+        self.alternate_addr = addr + ".alt"
+        self.count          = 300
+
+        self.sender_conn    = None
+        self.primary_conn   = None
+        self.alternate_conn = None
+        self.error          = None
+        self.n_tx           = 0
+        self.n_rx           = 0
+        self.n_rel          = 0
+        self.phase          = 0
+
+    def timeout(self):
+        self.error = "Timeout Expired - n_tx=%d, n_rx=%d, n_rel=%d, phase=%d" % (self.n_tx, self.n_rx, self.n_rel, self.phase)
+        self.sender_conn.close()
+        self.primary_conn.close()
+        self.alternate_conn.close()
+
+    def fail(self, error):
+        self.error = error
+        self.sender_conn.close()
+        self.primary_conn.close()
+        self.alternate_conn.close()
+        self.timer.cancel()
+
+    def on_start(self, event):
+        self.timer              = event.reactor.schedule(10.0, Timeout(self))
+        self.sender_conn        = event.container.connect(self.sender_host)
+        self.primary_conn       = event.container.connect(self.primary_host)
+        self.alternate_conn     = event.container.connect(self.alternate_host)
+        self.primary_receiver   = event.container.create_receiver(self.primary_conn, self.addr)
+        self.alternate_receiver = event.container.create_receiver(self.primary_conn, self.alternate_addr)
+
+    def on_link_opened(self, event):
+        if event.receiver == self.primary_receiver:
+            self.sender = event.container.create_sender(self.sender_conn, self.addr)
+
+    def on_link_closed(self, event):
+        if event.receiver == self.primary_receiver:
+            self.n_rx = 0
+            self.n_tx = 0
+            self.send()
+
+    def send(self):
+        while self.sender.credit > 0 and self.n_tx < self.count:
+            self.sender.send(Message("Message %d" % self.n_tx))
+            self.n_tx += 1
+            
+    def on_sendable(self, event):
+        if event.sender == self.sender:
+            self.send()
+
+    def on_message(self, event):
+        self.n_rx += 1
+        if self.n_rx == self.count:
+            if self.phase == 0:
+                self.phase = 1
+                self.primary_receiver.close()
+            else:
+                self.fail(None)
+
+    def on_released(self, event):
+        self.n_rel += 1
+        self.n_tx  -= 1
 
     def run(self):
         Container(self).run()
