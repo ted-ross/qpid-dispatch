@@ -725,6 +725,7 @@ struct qdr_auto_link_t {
     qdr_auto_link_state_t  state;
     qdr_core_timer_t      *retry_timer; // If the auto link attach fails or gets disconnected, this timer retries the attach.
     char                  *last_error;
+    bool                   alternate;   // True iff this auto-link attaches to an alternate destination for an address.
 };
 
 DEQ_DECLARE(qdr_auto_link_t, qdr_auto_link_list_t);

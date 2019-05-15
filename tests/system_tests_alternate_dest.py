@@ -62,7 +62,10 @@ class RouterTest(TestCase):
             config = [
                 ('router', {'mode': mode, 'id': name}),
                 ('listener', {'port': cls.tester.get_port(), 'stripAnnotations': 'no'}),
+                ('listener', {'port': cls.tester.get_port(), 'role': 'route-container', 'name': 'WP'}),
                 ('address', {'prefix': 'dest', 'alternate': 'yes'}),
+                ('autoLink', {'connection': 'WP', 'address': 'dest.al', 'dir': 'out', 'alternate': 'yes'}),
+                ('autoLink', {'connection': 'WP', 'address': 'dest.al', 'dir': 'in',  'alternate': 'yes'}),
                 connection
             ]
 
@@ -370,6 +373,78 @@ class RouterTest(TestCase):
         test.run()
         self.assertEqual(None, test.error)
 
+    def test_39_auto_link_sender_first_alternate_same_interior(self):
+        test = SenderFirstAutoLinkTest(self.routers[0].addresses[0],
+                                       self.routers[0].addresses[1])
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_40_auto_link_sender_first_alternate_same_edge(self):
+        test = SenderFirstAutoLinkTest(self.routers[2].addresses[0],
+                                       self.routers[2].addresses[1])
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_41_auto_link_sender_first_alternate_interior_interior(self):
+        test = SenderFirstAutoLinkTest(self.routers[0].addresses[0],
+                                       self.routers[1].addresses[1])
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_42_auto_link_sender_first_alternate_edge_interior(self):
+        test = SenderFirstAutoLinkTest(self.routers[2].addresses[0],
+                                       self.routers[1].addresses[1])
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_43_auto_link_sender_first_alternate_interior_edge(self):
+        test = SenderFirstAutoLinkTest(self.routers[1].addresses[0],
+                                       self.routers[2].addresses[1])
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_44_auto_link_sender_first_alternate_edge_edge(self):
+        test = SenderFirstAutoLinkTest(self.routers[2].addresses[0],
+                                       self.routers[4].addresses[1])
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_45_auto_link_receiver_first_alternate_same_interior(self):
+        test = ReceiverFirstAutoLinkTest(self.routers[0].addresses[0],
+                                         self.routers[0].addresses[1])
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_46_auto_link_receiver_first_alternate_same_edge(self):
+        test = ReceiverFirstAutoLinkTest(self.routers[2].addresses[0],
+                                         self.routers[2].addresses[1])
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_47_auto_link_receiver_first_alternate_interior_interior(self):
+        test = ReceiverFirstAutoLinkTest(self.routers[0].addresses[0],
+                                         self.routers[1].addresses[1])
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_48_auto_link_receiver_first_alternate_edge_interior(self):
+        test = ReceiverFirstAutoLinkTest(self.routers[2].addresses[0],
+                                         self.routers[1].addresses[1])
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_49_auto_link_receiver_first_alternate_interior_edge(self):
+        test = ReceiverFirstAutoLinkTest(self.routers[1].addresses[0],
+                                         self.routers[2].addresses[1])
+        test.run()
+        self.assertEqual(None, test.error)
+
+    def test_50_auto_link_receiver_first_alternate_edge_edge(self):
+        test = ReceiverFirstAutoLinkTest(self.routers[2].addresses[0],
+                                         self.routers[4].addresses[1])
+        test.run()
+        self.assertEqual(None, test.error)
+
 
 class Timeout(object):
     def __init__(self, parent):
@@ -532,7 +607,7 @@ class SwitchoverTest(MessagingHandler):
         self.primary_conn       = event.container.connect(self.primary_host)
         self.alternate_conn     = event.container.connect(self.alternate_host)
         self.primary_receiver   = event.container.create_receiver(self.primary_conn, self.addr)
-        self.alternate_receiver = event.container.create_receiver(self.primary_conn, self.addr, name=self.addr+".alt")
+        self.alternate_receiver = event.container.create_receiver(self.primary_conn, self.addr, name=self.addr)
         self.alternate_receiver.source.capabilities.put_object(symbol("qd.alternate"))
 
     def on_link_opened(self, event):
@@ -566,6 +641,135 @@ class SwitchoverTest(MessagingHandler):
     def on_released(self, event):
         self.n_rel += 1
         self.n_tx  -= 1
+
+    def run(self):
+        Container(self).run()
+
+
+class SenderFirstAutoLinkTest(MessagingHandler):
+    def __init__(self, sender_host, receiver_host):
+        super(SenderFirstAutoLinkTest, self).__init__()
+        self.sender_host   = sender_host
+        self.receiver_host = receiver_host
+        self.addr          = "dest.al"
+        self.count         = 300
+
+        self.sender_conn   = None
+        self.receiver_conn = None
+        self.error         = None
+        self.n_tx          = 0
+        self.n_rx          = 0
+        self.n_rel         = 0
+
+    def timeout(self):
+        self.error = "Timeout Expired - n_tx=%d, n_rx=%d, n_rel=%d" % (self.n_tx, self.n_rx, self.n_rel)
+        self.sender_conn.close()
+        self.receiver_conn.close()
+
+    def fail(self, error):
+        self.error = error
+        self.sender_conn.close()
+        self.receiver_conn.close()
+        self.timer.cancel()
+
+    def on_start(self, event):
+        self.timer       = event.reactor.schedule(10.0, Timeout(self))
+        self.sender_conn = event.container.connect(self.sender_host)
+        self.sender      = event.container.create_sender(self.sender_conn, self.addr)
+
+    def on_link_opening(self, event):
+        if event.sender:
+            self.alt_sender = event.sender
+            event.sender.source.address = self.addr
+            event.sender.open()
+
+        elif event.receiver:
+            self.alt_receiver = event.receiver
+            event.receiver.target.address = self.addr
+            event.receiver.open()
+
+    def on_link_opened(self, event):
+        if event.sender == self.sender:
+            self.receiver_conn = event.container.connect(self.receiver_host)
+
+    def on_sendable(self, event):
+        if event.sender == self.sender:
+            while self.sender.credit > 0 and self.n_tx < self.count:
+                self.sender.send(Message("Message %d" % self.n_tx))
+                self.n_tx += 1
+
+    def on_message(self, event):
+        self.n_rx += 1
+        if self.n_rx == self.count:
+            self.fail(None)
+
+    def on_released(self, event):
+        self.n_rel += 1
+
+    def run(self):
+        Container(self).run()
+
+
+class ReceiverFirstAutoLinkTest(MessagingHandler):
+    def __init__(self, sender_host, receiver_host):
+        super(ReceiverFirstAutoLinkTest, self).__init__()
+        self.sender_host   = sender_host
+        self.receiver_host = receiver_host
+        self.addr          = "dest.al"
+        self.count         = 300
+
+        self.sender_conn   = None
+        self.receiver_conn = None
+        self.alt_receiver  = None
+        self.error         = None
+        self.n_tx          = 0
+        self.n_rx          = 0
+        self.n_rel         = 0
+
+    def timeout(self):
+        self.error = "Timeout Expired - n_tx=%d, n_rx=%d, n_rel=%d" % (self.n_tx, self.n_rx, self.n_rel)
+        self.sender_conn.close()
+        self.receiver_conn.close()
+
+    def fail(self, error):
+        self.error = error
+        self.sender_conn.close()
+        self.receiver_conn.close()
+        self.timer.cancel()
+
+    def on_start(self, event):
+        self.timer         = event.reactor.schedule(10.0, Timeout(self))
+        self.receiver_conn = event.container.connect(self.receiver_host)
+
+    def on_link_opening(self, event):
+        if event.sender:
+            self.alt_sender = event.sender
+            event.sender.source.address = self.addr
+            event.sender.open()
+
+        elif event.receiver:
+            self.alt_receiver = event.receiver
+            event.receiver.target.address = self.addr
+            event.receiver.open()
+
+    def on_link_opened(self, event):
+        if event.receiver == self.alt_receiver:
+            self.sender_conn = event.container.connect(self.sender_host)
+            self.sender      = event.container.create_sender(self.sender_conn, self.addr)
+
+    def on_sendable(self, event):
+        if event.sender == self.sender:
+            while self.sender.credit > 0 and self.n_tx < self.count:
+                self.sender.send(Message("Message %d" % self.n_tx))
+                self.n_tx += 1
+
+    def on_message(self, event):
+        self.n_rx += 1
+        if self.n_rx == self.count:
+            self.fail(None)
+
+    def on_released(self, event):
+        self.n_rel += 1
 
     def run(self):
         Container(self).run()

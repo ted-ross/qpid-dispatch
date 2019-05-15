@@ -1285,6 +1285,14 @@
                     "create": true,
                     "required": false
                 },
+                "alternate":
+                {
+                    "type": "boolean",
+                    "description": "If true, this auto-link is attached to an alternate destination for an address.",
+                    "create": true,
+                    "required": false,
+                    "default": false
+                },
                 "linkRef": {
                     "type": "string",
                     "description": "Reference to the org.apache.qpid.dispatch.router.link if the link exists",
