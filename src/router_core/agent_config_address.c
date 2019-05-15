@@ -32,7 +32,7 @@
 #define QDR_CONFIG_ADDRESS_OUT_PHASE     7
 #define QDR_CONFIG_ADDRESS_PATTERN       8
 #define QDR_CONFIG_ADDRESS_PRIORITY      9
-#define QDR_CONFIG_ADDRESS_UNDEL_SUFFIX  10
+#define QDR_CONFIG_ADDRESS_ALTERNATE     10
 
 const char *qdr_config_address_columns[] =
     {"name",
@@ -45,7 +45,7 @@ const char *qdr_config_address_columns[] =
      "egressPhase",
      "pattern",
      "priority",
-     "undeliverableSuffix",
+     "alternate",
      0};
 
 const char *CONFIG_ADDRESS_TYPE = "org.apache.qpid.dispatch.router.config.address";
@@ -128,11 +128,9 @@ static void qdr_config_address_insert_column_CT(qdr_address_config_t *addr, int 
         qd_compose_insert_int(body, addr->priority);
         break;
 
-    case QDR_CONFIG_ADDRESS_UNDEL_SUFFIX:
-        if (!!addr->undeliverable_suffix)
-            qd_compose_insert_string(body, addr->undeliverable_suffix);
-        else
-            qd_compose_insert_null(body);
+    case QDR_CONFIG_ADDRESS_ALTERNATE:
+        qd_compose_insert_bool(body, addr->alternate);
+        break;
     }
 }
 
@@ -355,7 +353,7 @@ void qdra_config_address_create_CT(qdr_core_t         *core,
         qd_parsed_field_t *in_phase_field  = qd_parse_value_by_key(in_body, qdr_config_address_columns[QDR_CONFIG_ADDRESS_IN_PHASE]);
         qd_parsed_field_t *out_phase_field = qd_parse_value_by_key(in_body, qdr_config_address_columns[QDR_CONFIG_ADDRESS_OUT_PHASE]);
         qd_parsed_field_t *priority_field  = qd_parse_value_by_key(in_body, qdr_config_address_columns[QDR_CONFIG_ADDRESS_PRIORITY]);
-        qd_parsed_field_t *undel_suffix_field = qd_parse_value_by_key(in_body, qdr_config_address_columns[QDR_CONFIG_ADDRESS_UNDEL_SUFFIX]);
+        qd_parsed_field_t *alternate_field = qd_parse_value_by_key(in_body, qdr_config_address_columns[QDR_CONFIG_ADDRESS_ALTERNATE]);
 
         //
         // Either a prefix or a pattern field is mandatory.  Prefix and pattern
@@ -399,10 +397,11 @@ void qdra_config_address_create_CT(qdr_core_t         *core,
         }
 
 
-        bool waypoint  = waypoint_field  ? qd_parse_as_bool(waypoint_field) : false;
+        bool waypoint  = waypoint_field  ? qd_parse_as_bool(waypoint_field)  : false;
         long in_phase  = in_phase_field  ? qd_parse_as_long(in_phase_field)  : -1;
         long out_phase = out_phase_field ? qd_parse_as_long(out_phase_field) : -1;
         long priority  = priority_field  ? qd_parse_as_long(priority_field)  : -1;
+        bool alternate = alternate_field ? qd_parse_as_bool(alternate_field) : false;
 
         //
         // Handle the address-phasing logic.  If the phases are provided, use them.  Otherwise
@@ -448,10 +447,8 @@ void qdra_config_address_create_CT(qdr_core_t         *core,
         addr->is_prefix = !!prefix_field;
         addr->pattern   = pattern;
         addr->priority  = priority;
+        addr->alternate = alternate;
         pattern = 0;
-
-        if (undel_suffix_field)
-            addr->undeliverable_suffix = (char*) qd_iterator_copy(qd_parse_raw(undel_suffix_field));
 
         qd_iterator_reset_view(iter, ITER_VIEW_ALL);
         qd_parse_tree_add_pattern(core->addr_parse_tree, iter, addr);

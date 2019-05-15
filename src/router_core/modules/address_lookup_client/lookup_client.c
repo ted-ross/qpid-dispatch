@@ -109,7 +109,7 @@ static void qdr_generate_mobile_addr(qdr_core_t *core, char *buffer, size_t leng
 
 /**
  * Search for, and possibly create, the alternate address based on the
- * undeliverable_suffix in the address's configuration.  This will be used in
+ * alternate flag in the address's configuration.  This will be used in
  * the forwarding paths to handle undeliverable messages with alternate destinations.
  */
 static void qdr_setup_alternate_CT(qdr_core_t *core, qdr_address_t *addr, qdr_address_config_t *addr_config)
@@ -120,7 +120,7 @@ static void qdr_setup_alternate_CT(qdr_core_t *core, qdr_address_t *addr, qdr_ad
     bool  buffer_on_heap = false;
 
     char   *address_text = (char*) qd_hash_key_by_handle(addr->hash_handle);
-    size_t  alt_length   = strlen(address_text) + strlen(addr_config->undeliverable_suffix) + 1;
+    size_t  alt_length   = strlen(address_text) + 1;
 
     if (alt_length > QDR_SETUP_ALTERNATE_BUFFER_SIZE) {
         alt_text       = (char*) malloc(alt_length);
@@ -128,7 +128,7 @@ static void qdr_setup_alternate_CT(qdr_core_t *core, qdr_address_t *addr, qdr_ad
     }
 
     strcpy(alt_text, address_text);
-    strcat(alt_text, addr_config->undeliverable_suffix);
+    alt_text[1] = QD_ITER_HASH_PHASE_ALTERNATE;
 
     qd_iterator_t *alt_iter = qd_iterator_string(alt_text, ITER_VIEW_ALL);
     qdr_address_t *alt_addr = 0;
@@ -180,7 +180,8 @@ static qdr_address_t *qdr_lookup_terminus_address_CT(qdr_core_t       *core,
                                                      bool              accept_dynamic,
                                                      bool             *link_route,
                                                      bool             *unavailable,
-                                                     bool             *core_endpoint)
+                                                     bool             *core_endpoint,
+                                                     bool             *alternate)
 {
     qdr_address_t *addr = 0;
 
@@ -190,6 +191,7 @@ static qdr_address_t *qdr_lookup_terminus_address_CT(qdr_core_t       *core,
     *link_route    = false;
     *unavailable   = false;
     *core_endpoint = false;
+    *alternate     = false;
 
     if (qdr_terminus_is_dynamic(terminus)) {
         //
@@ -283,10 +285,10 @@ static qdr_address_t *qdr_lookup_terminus_address_CT(qdr_core_t       *core,
     //
     // There was no match for a link-route destination, look for a message-route address.
     //
-    int in_phase  = 0;
-    int out_phase = 0;
-    int addr_phase;
-    int priority  = -1;
+    int  in_phase  = 0;
+    int  out_phase = 0;
+    char addr_phase;
+    int  priority  = -1;
     qd_address_treatment_t  treat       = core->qd->default_treatment;
     qdr_address_config_t   *addr_config = qdr_config_for_address_CT(core, conn, iter);
 
@@ -306,10 +308,15 @@ static qdr_address_t *qdr_lookup_terminus_address_CT(qdr_core_t       *core,
         out_phase = waypoint_ordinal - 1;
     }
 
+    //
+    // Determine if this endpoint is acting as an alternate destination for the address.
+    //
+    *alternate = qdr_terminus_has_capability(terminus, QD_CAPABILITY_ALTERNATE);
+
     qd_iterator_reset_view(iter, ITER_VIEW_ADDRESS_HASH);
     qd_iterator_annotate_prefix(iter, '\0'); // Cancel previous override
-    addr_phase = dir == QD_INCOMING ? in_phase : out_phase;
-    qd_iterator_annotate_phase(iter, (char) addr_phase + '0');
+    addr_phase = dir == QD_INCOMING ? (*alternate ? QD_ITER_HASH_PHASE_ALTERNATE : in_phase + '0') : out_phase + '0';
+    qd_iterator_annotate_phase(iter, addr_phase);
 
     qd_hash_retrieve(core->addr_hash, iter, (void**) &addr);
 
@@ -334,7 +341,7 @@ static qdr_address_t *qdr_lookup_terminus_address_CT(qdr_core_t       *core,
             // If this address is configured with an undeliverable_suffix, set up the
             // alternate address linkage.
             //
-            if (!!addr_config && !!addr_config->undeliverable_suffix && !addr->alternate)
+            if (!!addr_config && addr_config->alternate && !addr->alternate)
                 qdr_setup_alternate_CT(core, addr, addr_config);
         }
 
@@ -363,8 +370,11 @@ static void qdr_link_react_to_first_attach_CT(qdr_core_t       *core,
                                               qdr_terminus_t   *target,
                                               bool              link_route,
                                               bool              unavailable,
-                                              bool              core_endpoint)
+                                              bool              core_endpoint,
+                                              bool              alternate)
 {
+    link->alternate = alternate;
+
     if (core_endpoint) {
         qdrc_endpoint_do_bound_attach_CT(core, addr, link, source, target);
     }
@@ -463,6 +473,7 @@ static void qcm_addr_lookup_local_search(qcm_lookup_client_t *client, qcm_addr_l
     bool              link_route;
     bool              unavailable;
     bool              core_endpoint;
+    bool              alternate;
     qdr_connection_t *conn = safe_deref_qdr_connection_t(request->conn_sp);
     qdr_link_t       *link = safe_deref_qdr_link_t(request->link_sp);
 
@@ -478,7 +489,8 @@ static void qcm_addr_lookup_local_search(qcm_lookup_client_t *client, qcm_addr_l
                                                           true,
                                                           &link_route,
                                                           &unavailable,
-                                                          &core_endpoint);
+                                                          &core_endpoint,
+                                                          &alternate);
     qdr_link_react_to_first_attach_CT(client->core,
                                       conn,
                                       addr,
@@ -488,7 +500,8 @@ static void qcm_addr_lookup_local_search(qcm_lookup_client_t *client, qcm_addr_l
                                       request->target,
                                       link_route,
                                       unavailable,
-                                      core_endpoint);
+                                      core_endpoint,
+                                      alternate);
 }
 
 
@@ -565,6 +578,7 @@ static void qcm_addr_lookup_CT(void             *context,
     bool                 link_route;
     bool                 unavailable;
     bool                 core_endpoint;
+    bool                 alternate;
     qdr_terminus_t      *term = dir == QD_INCOMING ? target : source;
 
     if (client->core->router_mode == QD_ROUTER_MODE_EDGE
@@ -593,9 +607,9 @@ static void qcm_addr_lookup_CT(void             *context,
     // If this lookup doesn't meet the criteria for asynchronous action, perform the built-in, synchronous address lookup
     //
     qdr_address_t *addr = qdr_lookup_terminus_address_CT(client->core, dir, conn, term, true, true,
-                                                         &link_route, &unavailable, &core_endpoint);
+                                                         &link_route, &unavailable, &core_endpoint, &alternate);
     qdr_link_react_to_first_attach_CT(client->core, conn, addr, link, dir, source, target,
-                                      link_route, unavailable, core_endpoint);
+                                      link_route, unavailable, core_endpoint, alternate);
 }
 
 

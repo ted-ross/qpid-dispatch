@@ -471,7 +471,6 @@ static void free_address_config(qdr_address_config_t *addr)
 {
     free(addr->name);
     free(addr->pattern);
-    free(addr->undeliverable_suffix);
     free_qdr_address_config_t(addr);
 }
 

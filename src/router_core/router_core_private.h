@@ -444,6 +444,7 @@ struct qdr_link_t {
     bool                     edge;              ///< True if this link is in an edge-connection
     bool                     processing;        ///< True if an IO thread is currently handling this link
     bool                     ready_to_free;     ///< True if the core thread wanted to clean up the link but it was processing
+    bool                     alternate;         ///< True if this link is attached to an alternate destination for an address
     char                    *strip_prefix;
     char                    *insert_prefix;
     bool                     terminus_survives_disconnect;
@@ -570,7 +571,7 @@ struct qdr_address_config_t {
     uint64_t                identity;
     uint32_t                ref_count;
     char                   *pattern;
-    char                   *undeliverable_suffix;
+    bool                    alternate;
     bool                    is_prefix;
     qd_address_treatment_t  treatment;
     int                     in_phase;

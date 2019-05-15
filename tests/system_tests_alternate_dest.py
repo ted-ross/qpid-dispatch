@@ -62,7 +62,7 @@ class RouterTest(TestCase):
             config = [
                 ('router', {'mode': mode, 'id': name}),
                 ('listener', {'port': cls.tester.get_port(), 'stripAnnotations': 'no'}),
-                ('address', {'prefix': 'dest', 'undeliverableSuffix': '.alt'}),
+                ('address', {'prefix': 'dest', 'alternate': 'yes'}),
                 connection
             ]
 
@@ -93,192 +93,168 @@ class RouterTest(TestCase):
     def test_01_sender_first_primary_same_interior(self):
         test = SenderFirstTest(self.routers[0].addresses[0],
                                self.routers[0].addresses[0],
-                               'dest.01',
-                               'dest.01')
+                               'dest.01', False)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_02_sender_first_alternate_same_interior(self):
         test = SenderFirstTest(self.routers[0].addresses[0],
                                self.routers[0].addresses[0],
-                               'dest.02',
-                               'dest.02.alt')
+                               'dest.02', True)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_03_sender_first_primary_same_edge(self):
         test = SenderFirstTest(self.routers[2].addresses[0],
                                self.routers[2].addresses[0],
-                               'dest.03',
-                               'dest.03')
+                               'dest.03', False)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_04_sender_first_alternate_same_edge(self):
         test = SenderFirstTest(self.routers[2].addresses[0],
                                self.routers[2].addresses[0],
-                               'dest.04',
-                               'dest.04.alt')
+                               'dest.04', True)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_05_sender_first_primary_interior_interior(self):
         test = SenderFirstTest(self.routers[0].addresses[0],
                                self.routers[1].addresses[0],
-                               'dest.05',
-                               'dest.05')
+                               'dest.05', False)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_06_sender_first_alternate_interior_interior(self):
         test = SenderFirstTest(self.routers[0].addresses[0],
                                self.routers[1].addresses[0],
-                               'dest.06',
-                               'dest.06.alt')
+                               'dest.06', True)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_07_sender_first_primary_edge_interior(self):
         test = SenderFirstTest(self.routers[2].addresses[0],
                                self.routers[1].addresses[0],
-                               'dest.07',
-                               'dest.07')
+                               'dest.07', False)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_08_sender_first_alternate_edge_interior(self):
         test = SenderFirstTest(self.routers[2].addresses[0],
                                self.routers[1].addresses[0],
-                               'dest.08',
-                               'dest.08.alt')
+                               'dest.08', True)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_09_sender_first_primary_interior_edge(self):
         test = SenderFirstTest(self.routers[1].addresses[0],
                                self.routers[2].addresses[0],
-                               'dest.09',
-                               'dest.09')
+                               'dest.09', False)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_10_sender_first_alternate_interior_edge(self):
         test = SenderFirstTest(self.routers[1].addresses[0],
                                self.routers[2].addresses[0],
-                               'dest.10',
-                               'dest.10.alt')
+                               'dest.10', True)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_11_sender_first_primary_edge_edge(self):
         test = SenderFirstTest(self.routers[2].addresses[0],
                                self.routers[4].addresses[0],
-                               'dest.11',
-                               'dest.11')
+                               'dest.11', False)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_12_sender_first_alternate_edge_edge(self):
         test = SenderFirstTest(self.routers[2].addresses[0],
                                self.routers[4].addresses[0],
-                               'dest.12',
-                               'dest.12.alt')
+                               'dest.12', True)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_13_receiver_first_primary_same_interior(self):
         test = ReceiverFirstTest(self.routers[0].addresses[0],
                                  self.routers[0].addresses[0],
-                                 'dest.13',
-                                 'dest.13')
+                                 'dest.13', False)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_14_receiver_first_alternate_same_interior(self):
         test = ReceiverFirstTest(self.routers[0].addresses[0],
                                  self.routers[0].addresses[0],
-                                 'dest.14',
-                                 'dest.14.alt')
+                                 'dest.14', True)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_15_receiver_first_primary_same_edge(self):
         test = ReceiverFirstTest(self.routers[2].addresses[0],
                                  self.routers[2].addresses[0],
-                                 'dest.15',
-                                 'dest.15')
+                                 'dest.15', False)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_16_receiver_first_alternate_same_edge(self):
         test = ReceiverFirstTest(self.routers[2].addresses[0],
                                  self.routers[2].addresses[0],
-                                 'dest.16',
-                                 'dest.16.alt')
+                                 'dest.16', True)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_17_receiver_first_primary_interior_interior(self):
         test = ReceiverFirstTest(self.routers[0].addresses[0],
                                  self.routers[1].addresses[0],
-                                 'dest.17',
-                                 'dest.17')
+                                 'dest.17', False)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_18_receiver_first_alternate_interior_interior(self):
         test = ReceiverFirstTest(self.routers[0].addresses[0],
                                  self.routers[1].addresses[0],
-                                 'dest.18',
-                                 'dest.18.alt')
+                                 'dest.18', True)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_19_receiver_first_primary_edge_interior(self):
         test = ReceiverFirstTest(self.routers[2].addresses[0],
                                  self.routers[1].addresses[0],
-                                 'dest.19',
-                                 'dest.19')
+                                 'dest.19', False)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_20_receiver_first_alternate_edge_interior(self):
         test = ReceiverFirstTest(self.routers[2].addresses[0],
                                  self.routers[1].addresses[0],
-                                 'dest.20',
-                                 'dest.20.alt')
+                                 'dest.20', True)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_21_receiver_first_primary_interior_edge(self):
         test = ReceiverFirstTest(self.routers[1].addresses[0],
                                  self.routers[2].addresses[0],
-                                 'dest.21',
-                                 'dest.21')
+                                 'dest.21', False)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_22_receiver_first_alternate_interior_edge(self):
         test = ReceiverFirstTest(self.routers[1].addresses[0],
                                  self.routers[2].addresses[0],
-                                 'dest.22',
-                                 'dest.22.alt')
+                                 'dest.22', True)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_23_receiver_first_primary_edge_edge(self):
         test = ReceiverFirstTest(self.routers[2].addresses[0],
                                  self.routers[4].addresses[0],
-                                 'dest.23',
-                                 'dest.23')
+                                 'dest.23', False)
         test.run()
         self.assertEqual(None, test.error)
 
     def test_24_receiver_first_alternate_edge_edge(self):
         test = ReceiverFirstTest(self.routers[2].addresses[0],
                                  self.routers[4].addresses[0],
-                                 'dest.24',
-                                 'dest.24.alt')
+                                 'dest.24', True)
         test.run()
         self.assertEqual(None, test.error)
 
@@ -386,6 +362,14 @@ class RouterTest(TestCase):
         test.run()
         self.assertEqual(None, test.error)
 
+    def test_38_switchover_mix_4(self):
+        test = SwitchoverTest(self.routers[2].addresses[0],
+                              self.routers[3].addresses[0],
+                              self.routers[4].addresses[0],
+                              'dest.38')
+        test.run()
+        self.assertEqual(None, test.error)
+
 
 class Timeout(object):
     def __init__(self, parent):
@@ -396,12 +380,12 @@ class Timeout(object):
 
 
 class SenderFirstTest(MessagingHandler):
-    def __init__(self, sender_host, receiver_host, send_addr, recv_addr):
+    def __init__(self, sender_host, receiver_host, addr, rx_alternate):
         super(SenderFirstTest, self).__init__()
         self.sender_host   = sender_host
         self.receiver_host = receiver_host
-        self.send_addr     = send_addr
-        self.recv_addr     = recv_addr
+        self.addr          = addr
+        self.rx_alternate  = rx_alternate
         self.count         = 300
 
         self.sender_conn   = None
@@ -426,11 +410,13 @@ class SenderFirstTest(MessagingHandler):
         self.timer         = event.reactor.schedule(10.0, Timeout(self))
         self.sender_conn   = event.container.connect(self.sender_host)
         self.receiver_conn = event.container.connect(self.receiver_host)
-        self.sender        = event.container.create_sender(self.sender_conn, self.send_addr)
+        self.sender        = event.container.create_sender(self.sender_conn, self.addr)
 
     def on_link_opened(self, event):
         if event.sender == self.sender:
-            self.receiver = event.container.create_receiver(self.receiver_conn, self.recv_addr)
+            self.receiver = event.container.create_receiver(self.receiver_conn, self.addr)
+            if self.rx_alternate:
+                self.receiver.source.capabilities.put_object(symbol("qd.alternate"))
 
     def on_sendable(self, event):
         if event.sender == self.sender:
@@ -452,12 +438,12 @@ class SenderFirstTest(MessagingHandler):
 
 
 class ReceiverFirstTest(MessagingHandler):
-    def __init__(self, sender_host, receiver_host, send_addr, recv_addr):
+    def __init__(self, sender_host, receiver_host, addr, rx_alternate):
         super(ReceiverFirstTest, self).__init__()
         self.sender_host   = sender_host
         self.receiver_host = receiver_host
-        self.send_addr     = send_addr
-        self.recv_addr     = recv_addr
+        self.addr          = addr
+        self.rx_alternate  = rx_alternate
         self.count         = 300
 
         self.sender_conn   = None
@@ -482,11 +468,13 @@ class ReceiverFirstTest(MessagingHandler):
         self.timer         = event.reactor.schedule(10.0, Timeout(self))
         self.sender_conn   = event.container.connect(self.sender_host)
         self.receiver_conn = event.container.connect(self.receiver_host)
-        self.receiver      = event.container.create_receiver(self.receiver_conn, self.recv_addr)
+        self.receiver      = event.container.create_receiver(self.receiver_conn, self.addr)
+        if self.rx_alternate:
+            self.receiver.source.capabilities.put_object(symbol("qd.alternate"))
 
     def on_link_opened(self, event):
         if event.receiver == self.receiver:
-            self.sender = event.container.create_sender(self.sender_conn, self.send_addr)
+            self.sender = event.container.create_sender(self.sender_conn, self.addr)
 
     def on_sendable(self, event):
         if event.sender == self.sender:
@@ -514,7 +502,6 @@ class SwitchoverTest(MessagingHandler):
         self.primary_host   = primary_host
         self.alternate_host = alternate_host
         self.addr           = addr
-        self.alternate_addr = addr + ".alt"
         self.count          = 300
 
         self.sender_conn    = None
@@ -545,7 +532,8 @@ class SwitchoverTest(MessagingHandler):
         self.primary_conn       = event.container.connect(self.primary_host)
         self.alternate_conn     = event.container.connect(self.alternate_host)
         self.primary_receiver   = event.container.create_receiver(self.primary_conn, self.addr)
-        self.alternate_receiver = event.container.create_receiver(self.primary_conn, self.alternate_addr)
+        self.alternate_receiver = event.container.create_receiver(self.primary_conn, self.addr, name=self.addr+".alt")
+        self.alternate_receiver.source.capabilities.put_object(symbol("qd.alternate"))
 
     def on_link_opened(self, event):
         if event.receiver == self.primary_receiver:
