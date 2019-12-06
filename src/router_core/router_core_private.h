@@ -821,6 +821,7 @@ struct qdr_core_t {
     qdrc_event_subscription_list_t conn_event_subscriptions;
     qdrc_event_subscription_list_t link_event_subscriptions;
     qdrc_event_subscription_list_t addr_event_subscriptions;
+    qdrc_event_subscription_list_t router_event_subscriptions;
 
     qd_router_mode_t  router_mode;
     const char       *router_area;

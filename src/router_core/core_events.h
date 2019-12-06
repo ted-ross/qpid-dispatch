@@ -60,6 +60,9 @@ typedef uint32_t qdrc_event_t;
  * QDRC_EVENT_ADDR_NO_LONGER_SOURCE      An address transitioned from one to zero local sources (inlink)
  * QDRC_EVENT_ADDR_TWO_SOURCE            An address transitioned from one to two local sources (inlink)
  * QDRC_EVENT_ADDR_ONE_SOURCE            An address transitioned from two to one local sources (inlink)
+ *
+ * QDRC_EVENT_ROUTER_ADDED               A remote router has been discovered
+ * QDRC_EVENT_ROUTER_REMOVED             A remote router has been lost
 */
 
 #define QDRC_EVENT_CONN_OPENED               0x00000001
@@ -92,6 +95,10 @@ typedef uint32_t qdrc_event_t;
 #define QDRC_EVENT_ADDR_ONE_SOURCE           0x08000000
 #define _QDRC_EVENT_ADDR_RANGE               0x0FFF0000
 
+#define QDRC_EVENT_ROUTER_ADDED              0x10000000
+#define QDRC_EVENT_ROUTER_REMOVED            0x20000000
+#define _QDRC_EVENT_ROUTER_RANGE             0x30000000
+
 
 /**
  * Callbacks - Connection, Link, and Address event notifications
@@ -112,6 +119,10 @@ typedef void (*qdrc_address_event_t) (void          *context,
                                       qdrc_event_t   event_type,
                                       qdr_address_t *addr);
 
+typedef void (*qdrc_router_event_t) (void          *context,
+                                     qdrc_event_t   event_type,
+                                     qdr_node_t    *router);
+
 /**
  * qdrc_event_subscribe_CT
  *
@@ -130,6 +141,7 @@ qdrc_event_subscription_t *qdrc_event_subscribe_CT(qdr_core_t             *core,
                                                    qdrc_connection_event_t on_conn_event,
                                                    qdrc_link_event_t       on_link_event,
                                                    qdrc_address_event_t    on_addr_event,
+                                                   qdrc_router_event_t     on_router_event,
                                                    void                   *context);
 
 /**
@@ -152,5 +164,6 @@ DEQ_DECLARE(qdrc_event_subscription_t, qdrc_event_subscription_list_t);
 void qdrc_event_conn_raise(qdr_core_t *core, qdrc_event_t event, qdr_connection_t *conn);
 void qdrc_event_link_raise(qdr_core_t *core, qdrc_event_t event, qdr_link_t *link);
 void qdrc_event_addr_raise(qdr_core_t *core, qdrc_event_t event, qdr_address_t *addr);
+void qdrc_event_router_raise(qdr_core_t *core, qdrc_event_t event, qdr_node_t *router);
 
 #endif
