@@ -46,4 +46,4 @@ static void qcm_mobile_final_CT(void *module_context)
 }
 
 
-QDR_CORE_MODULE_DECLARE("mobile_address", qcm_mobile_enable_CT, qcm_mobile_init_CT, qcm_mobile_final_CT)
+QDR_CORE_MODULE_DECLARE("mobile_sync", qcm_mobile_enable_CT, qcm_mobile_init_CT, qcm_mobile_final_CT)
