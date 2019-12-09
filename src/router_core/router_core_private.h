@@ -516,6 +516,13 @@ struct qdr_address_t {
     uint64_t                   cost_epoch;
 
     //
+    // State for mobile-address synchronization
+    //
+    DEQ_LINKS_N(SYNC_ADD, qdr_address_t);
+    DEQ_LINKS_N(SYNC_DEL, qdr_address_t);
+    uint32_t sync_mask;
+
+    //
     // State for tracking fallback destinations for undeliverable deliveries
     //
     qdr_address_t *fallback;     ///< Pointer to this address's fallback destination
