@@ -189,7 +189,7 @@ class NodeTracker(object):
             if node.mobile_address_requested():
                 self.container.mobile_address_engine.send_mar(node_id, node.mobile_address_sequence)
 
-        ##
+        ## REMOVE
         ## If local changes have been made to the list of mobile addresses, send
         ## an unsolicited mobile-address-update to all routers.
         ##
@@ -258,6 +258,12 @@ class NodeTracker(object):
             node.remove_link()
             if self.link_state.del_peer(node_id):
                 self.link_state_changed = True
+
+
+    def set_my_mobile_seq(self, mobile_seq):
+        """
+        """
+        pass
 
 
     def in_flux_mode(self, now):

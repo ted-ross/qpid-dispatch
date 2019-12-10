@@ -116,6 +116,14 @@ class RouterEngine(object):
         except Exception:
             self.log_ma(LOG_ERROR, "Exception in del-address processing\n%s" % format_exc(LOG_STACK_LIMIT))
 
+
+    def setMobileSeq(self, mobile_seq):
+        """
+        """
+        self.link_state_engine.set_mobile_seq(mobile_seq)
+        self.link_state_engine.send_ra(time.time())
+
+        
     def linkLost(self, link_id):
         """
         """

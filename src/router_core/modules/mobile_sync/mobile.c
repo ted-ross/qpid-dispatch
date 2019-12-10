@@ -41,6 +41,8 @@ typedef struct {
     qdr_subscription_t        *message_sub1;
     qdr_subscription_t        *message_sub2;
     uint64_t                   mobile_seq;
+    qdr_address_list_t         added_addrs;
+    qdr_address_list_t         deleted_addrs;
 } qdrm_mobile_sync_t;
 
 //================================================================================
@@ -52,6 +54,11 @@ static void qcm_mobile_sync_on_timer_CT(qdr_core_t *core, void *context)
     qdrm_mobile_sync_t *msync = (qdrm_mobile_sync_t*) context;
 
     qdr_core_timer_schedule_CT(core, msync->timer, 0);
+
+    //
+    // Send the unsolicited differential MAU _before_ posting the new mobile sequence
+    //
+    //qdr_post_set_mobile_seq_CT(core, msync->mobile_seq);
 }
 
 
@@ -84,6 +91,7 @@ static void qcm_mobile_sync_on_no_longer_local_dest_CT(qdrm_mobile_sync_t *msync
 
 static void qcm_mobile_sync_on_router_flush_CT(qdrm_mobile_sync_t *msync, qdr_node_t *router)
 {
+    router->mobile_seq = 0;
 }
 
 
@@ -193,8 +201,8 @@ static void qcm_mobile_sync_final_CT(void *module_context)
 
     qdrc_event_unsubscribe_CT(msync->core, msync->event_sub);
     qdr_core_timer_free_CT(msync->core, msync->timer);
-    qdr_core_unsubscribe(msync->message_sub1);
-    qdr_core_unsubscribe(msync->message_sub2);
+    //qdr_core_unsubscribe(msync->message_sub1);
+    //qdr_core_unsubscribe(msync->message_sub2);
 
     free(msync);
 }
