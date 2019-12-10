@@ -26,7 +26,6 @@ from .data import MessageHELLO, MessageRA, MessageLSU, MessageMAU, MessageMAR, M
 from .hello import HelloProtocol
 from .link import LinkStateEngine
 from .path import PathEngine
-from .mobile import MobileAddressEngine
 from .node import NodeTracker
 from .message import Message
 
@@ -56,7 +55,6 @@ class RouterEngine(object):
         self._config        = None # Not yet loaded
         self._log_hello     = LogAdapter("ROUTER_HELLO")
         self._log_ls        = LogAdapter("ROUTER_LS")
-        self._log_ma        = LogAdapter("ROUTER_MA")
         self._log_general   = LogAdapter("ROUTER")
         self.io_adapter     = [IoAdapter(self.receive, "qdrouter",    'L', '0', TREATMENT_MULTICAST_FLOOD),
                                IoAdapter(self.receive, "qdrouter.ma", 'L', '0', TREATMENT_MULTICAST_ONCE),
@@ -77,7 +75,6 @@ class RouterEngine(object):
         self.hello_protocol        = HelloProtocol(self, self.node_tracker)
         self.link_state_engine     = LinkStateEngine(self)
         self.path_engine           = PathEngine(self)
-        self.mobile_address_engine = MobileAddressEngine(self, self.node_tracker)
 
 
     ##========================================================================================
@@ -101,20 +98,13 @@ class RouterEngine(object):
     def addressAdded(self, addr, treatment):
         """
         """
-        try:
-            if addr[0] in 'MCDEFH':
-                self.mobile_address_engine.add_local_address(addr, treatment)
-        except Exception:
-            self.log_ma(LOG_ERROR, "Exception in new-address processing\n%s" % format_exc(LOG_STACK_LIMIT))
+        pass
+
 
     def addressRemoved(self, addr):
         """
         """
-        try:
-            if addr[0] in 'MCDEFH':
-                self.mobile_address_engine.del_local_address(addr)
-        except Exception:
-            self.log_ma(LOG_ERROR, "Exception in del-address processing\n%s" % format_exc(LOG_STACK_LIMIT))
+        pass
 
 
     def setMobileSeq(self, mobile_seq):
@@ -165,16 +155,6 @@ class RouterEngine(object):
                 msg = MessageLSR(body)
                 self.log_ls(LOG_TRACE, "RCVD: %r" % msg)
                 self.link_state_engine.handle_lsr(msg, now)
-
-            elif opcode == 'MAU':
-                msg = MessageMAU(body)
-                self.log_ma(LOG_TRACE, "RCVD: %r" % msg)
-                self.mobile_address_engine.handle_mau(msg, now)
-
-            elif opcode == 'MAR':
-                msg = MessageMAR(body)
-                self.log_ma(LOG_TRACE, "RCVD: %r" % msg)
-                self.mobile_address_engine.handle_mar(msg, now)
 
         except Exception:
             self.log(LOG_ERROR, "Exception in control message processing\n%s" % format_exc(LOG_STACK_LIMIT))

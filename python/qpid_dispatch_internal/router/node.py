@@ -187,14 +187,15 @@ class NodeTracker(object):
             if node.link_state_requested():
                 self.container.link_state_engine.send_lsr(node_id)
             if node.mobile_address_requested():
-                self.container.mobile_address_engine.send_mar(node_id, node.mobile_address_sequence)
+                pass
+                ##self.container.mobile_address_engine.send_mar(node_id, node.mobile_address_sequence)
 
         ## REMOVE
         ## If local changes have been made to the list of mobile addresses, send
         ## an unsolicited mobile-address-update to all routers.
         ##
-        mobile_seq = self.container.mobile_address_engine.tick(now)
-        self.container.link_state_engine.set_mobile_seq(mobile_seq)
+        ##mobile_seq = self.container.mobile_address_engine.tick(now)
+        ##self.container.link_state_engine.set_mobile_seq(mobile_seq)
 
         ##
         ## Send an immediate RA if our link state changed
