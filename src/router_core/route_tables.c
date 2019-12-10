@@ -144,6 +144,7 @@ qdr_subscription_t *qdr_core_subscribe(qdr_core_t             *core,
                                        char                    aclass,
                                        char                    phase,
                                        qd_address_treatment_t  treatment,
+                                       bool                    in_core,
                                        qdr_receive_t           on_message,
                                        void                   *context)
 {
@@ -152,6 +153,7 @@ qdr_subscription_t *qdr_core_subscribe(qdr_core_t             *core,
     sub->addr               = 0;
     sub->on_message         = on_message;
     sub->on_message_context = context;
+    sub->in_core            = in_core;
 
     qdr_action_t *action = qdr_action(qdr_subscribe_CT, "subscribe");
     action->args.io.address       = qdr_field(address);

@@ -62,8 +62,9 @@ typedef uint32_t qdrc_event_t;
  * QDRC_EVENT_ADDR_ONE_SOURCE            An address transitioned from two to one local sources (inlink)
  *
  * QDRC_EVENT_ROUTER_ADDED               A remote router has been discovered
- * QDRC_EVENT_ROUTER_UNREACHABLE         A remote router became unreachable
  * QDRC_EVENT_ROUTER_REMOVED             A remote router has been lost
+ * QDRC_EVENT_ROUTER_MOBILE_FLUSH        A remote router needs its mobile addresses unmapped
+ * QDRC_EVENT_ROUTER_MOBILE_SEQ_ADVANCED A remote router's mobile sequence advanced past our version of the sequence
 */
 
 #define QDRC_EVENT_CONN_OPENED               0x00000001
@@ -96,10 +97,11 @@ typedef uint32_t qdrc_event_t;
 #define QDRC_EVENT_ADDR_ONE_SOURCE           0x00800000
 #define _QDRC_EVENT_ADDR_RANGE               0x00FFF000
 
-#define QDRC_EVENT_ROUTER_ADDED              0x01000000
-#define QDRC_EVENT_ROUTER_UNREACHABLE        0x02000000
-#define QDRC_EVENT_ROUTER_REMOVED            0x04000000
-#define _QDRC_EVENT_ROUTER_RANGE             0x07000000
+#define QDRC_EVENT_ROUTER_ADDED               0x01000000
+#define QDRC_EVENT_ROUTER_REMOVED             0x02000000
+#define QDRC_EVENT_ROUTER_MOBILE_FLUSH        0x04000000
+#define QDRC_EVENT_ROUTER_MOBILE_SEQ_ADVANCED 0x08000000
+#define _QDRC_EVENT_ROUTER_RANGE              0x0F000000
 
 
 /**

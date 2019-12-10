@@ -349,6 +349,7 @@ struct qdr_node_t {
     uint32_t          ref_count;
     qd_bitmask_t     *valid_origins;
     int               cost;
+    uint64_t          mobile_seq;
 };
 
 DEQ_DECLARE(qdr_node_t, qdr_node_list_t);
@@ -380,6 +381,7 @@ struct qdr_subscription_t {
     qdr_address_t *addr;
     qdr_receive_t  on_message;
     void          *on_message_context;
+    bool           in_core;
 };
 
 DEQ_DECLARE(qdr_subscription_t, qdr_subscription_list_t);

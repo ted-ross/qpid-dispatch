@@ -106,11 +106,27 @@ void qdr_core_route_table_handlers(qdr_core_t           *core,
 typedef void (*qdr_receive_t) (void *context, qd_message_t *msg, int link_maskbit, int inter_router_cost,
                                uint64_t conn_id);
 
+/**
+ * qdr_core_subscribe
+ *
+ * Subscribe an in-process handler to receive messages to a particular address.
+ *
+ * @param core Pointer to the core module
+ * @param address The address of messages to be received
+ * @param aclass Address class character
+ * @param phase Address phase character ('0' .. '9')
+ * @param treatment Treatment for the address if it be being created as a side effect of this call
+ * @param in_core True iff the handler is to be run in the context of the core thread
+ * @param on_message The handler function
+ * @param context The opaque context sent to the handler on all invocations
+ * @return Pointer to the subscription object
+ */
 qdr_subscription_t *qdr_core_subscribe(qdr_core_t             *core,
                                        const char             *address,
                                        char                    aclass,
                                        char                    phase,
                                        qd_address_treatment_t  treatment,
+                                       bool                    in_core,
                                        qdr_receive_t           on_message,
                                        void                   *context);
 
