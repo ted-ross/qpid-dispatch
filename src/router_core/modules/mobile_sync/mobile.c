@@ -22,8 +22,12 @@
 #include "core_events.h"
 #include <qpid/dispatch/ctools.h>
 #include <qpid/dispatch/log.h>
+#include <qpid/dispatch/compose.h>
+#include <qpid/dispatch/message.h>
 #include <stdio.h>
 #include <inttypes.h>
+
+#define PROTOCOL_VERSION 1
 
 //
 // Address.sync_mask bit values
@@ -53,12 +57,6 @@ typedef struct {
 // Helper Functions
 //================================================================================
 
-static qd_message_t *qcm_mobile_sync_compose_differential_mau(qdr_core_t *core, qdrm_mobile_sync_t *msync)
-{
-    return 0;
-}
-
-
 /**
  * Set the 'block_deletion' flag on the address to ensure it is not deleted out from under
  * our list.  If the flag was already set, make note of that fact so we don't clear it later.
@@ -85,6 +83,90 @@ static void qcm_mobile_sync_address_removed_from_list(qdr_core_t *core, qdr_addr
     } else {
         BIT_CLEAR(addr->sync_mask, ADDR_SYNC_DELETION_WAS_BLOCKED);
     }
+}
+
+
+static qd_composed_field_t *qcm_mobile_sync_message_headers(const char *address, const char *opcode)
+{
+    qd_composed_field_t *field = qd_compose(QD_PERFORMATIVE_HEADER, 0);
+    qd_compose_start_list(field);
+    qd_compose_insert_bool(field, 0); // durable
+    qd_compose_end_list(field);
+
+    field = qd_compose(QD_PERFORMATIVE_PROPERTIES, field);
+    qd_compose_start_list(field);
+    qd_compose_insert_null(field);            // message-id
+    qd_compose_insert_null(field);            // user-id
+    qd_compose_insert_string(field, address); // to
+    qd_compose_insert_null(field);            // subject
+    qd_compose_insert_null(field);            // reply-to
+    qd_compose_insert_null(field);            // correlation-id
+    qd_compose_end_list(field);
+
+    field = qd_compose(QD_PERFORMATIVE_APPLICATION_PROPERTIES, field);
+    qd_compose_start_map(field);
+    qd_compose_insert_symbol(field, "opcode");
+    qd_compose_insert_string(field, opcode);
+    qd_compose_end_map(field);
+
+    return field;
+}
+
+
+static void qcm_mobile_sync_compose_addr_list(qdr_core_t *core, qdrm_mobile_sync_t *msync, qd_composed_field_t *field, bool is_added)
+{
+    qdr_address_list_t *list = is_added ? &msync->added_addrs : &msync->deleted_addrs;
+
+    qd_compose_start_list(field);
+    qdr_address_t *addr = DEQ_HEAD(*list);
+    while (addr) {
+        const char *hash_key = (const char*) qd_hash_key_by_handle(addr->hash_handle);
+        qd_compose_insert_string(field, hash_key);
+        if (is_added)
+            DEQ_REMOVE_HEAD_N(SYNC_ADD, *list);
+        else
+            DEQ_REMOVE_HEAD_N(SYNC_DEL, *list);
+        qcm_mobile_sync_address_removed_from_list(core, addr);
+        addr = DEQ_HEAD(*list);
+   }
+   qd_compose_end_list(field);
+ }
+
+
+static qd_message_t *qcm_mobile_sync_compose_differential_mau(qdr_core_t *core, qdrm_mobile_sync_t *msync, const char *address)
+{
+    qd_message_t        *msg     = qd_message();
+    qd_composed_field_t *headers = qcm_mobile_sync_message_headers(address, "MAU");
+    qd_composed_field_t *body    = qd_compose(QD_PERFORMATIVE_BODY_AMQP_VALUE, 0);
+
+    qd_compose_start_map(body);
+    qd_compose_insert_symbol(body, "id");
+    qd_compose_insert_string(body, core->router_id);
+
+    qd_compose_insert_symbol(body, "pv");
+    qd_compose_insert_long(body, PROTOCOL_VERSION);
+
+    qd_compose_insert_symbol(body, "area");
+    qd_compose_insert_string(body, core->router_area);
+
+    qd_compose_insert_symbol(body, "mobile_seq");
+    qd_compose_insert_long(body, msync->mobile_seq);
+
+    qd_compose_insert_symbol(body, "add");
+    qcm_mobile_sync_compose_addr_list(core, msync, body, true);
+
+    qd_compose_insert_symbol(body, "del");
+    qcm_mobile_sync_compose_addr_list(core, msync, body, false);
+
+    //
+    // TODO - Hints?
+    //
+
+    qd_compose_end_map(body);
+
+    qd_message_compose_3(msg, headers, body);
+
+    return msg;
 }
 
 
@@ -119,10 +201,10 @@ static void qcm_mobile_sync_on_timer_CT(qdr_core_t *core, void *context)
     //
     // Prepare a differential MAU for sending to all the other routers.
     //
-    qd_message_t *mau = qcm_mobile_sync_compose_differential_mau(core, msync);
+    qd_message_t *mau = qcm_mobile_sync_compose_differential_mau(core, msync, "_topo/0/all/qdrouter.ma");
 
     //
-    // Send the control message.  Set the exclude_inprocess and control flags.
+    // Multicast the control message.  Set the exclude_inprocess and control flags.
     // Use the TOPOLOGICAL class address for sending.
     //
     int fanout = qdr_forward_message_CT(core, core->routerma_addr_T, mau, 0, true, true);
