@@ -57,6 +57,13 @@ typedef struct {
 // Helper Functions
 //================================================================================
 
+static bool qcm_mobile_sync_addr_is_mobile(qdr_address_t *addr)
+{
+    const char *hash_key = (const char*) qd_hash_key_by_handle(addr->hash_handle);
+    return !!strchr("MCDEFH", hash_key[0]);
+}
+
+
 /**
  * Set the 'block_deletion' flag on the address to ensure it is not deleted out from under
  * our list.  If the flag was already set, make note of that fact so we don't clear it later.
@@ -122,15 +129,30 @@ static void qcm_mobile_sync_compose_addr_list(qdr_core_t *core, qdrm_mobile_sync
     while (addr) {
         const char *hash_key = (const char*) qd_hash_key_by_handle(addr->hash_handle);
         qd_compose_insert_string(field, hash_key);
-        if (is_added)
+        if (is_added) {
             DEQ_REMOVE_HEAD_N(SYNC_ADD, *list);
-        else
+            BIT_CLEAR(addr->sync_mask, ADDR_SYNC_IN_ADD_LIST);
+        } else {
             DEQ_REMOVE_HEAD_N(SYNC_DEL, *list);
+            BIT_CLEAR(addr->sync_mask, ADDR_SYNC_IN_DEL_LIST);
+        }
         qcm_mobile_sync_address_removed_from_list(core, addr);
         addr = DEQ_HEAD(*list);
-   }
-   qd_compose_end_list(field);
- }
+    }
+    qd_compose_end_list(field);
+}
+
+
+static void qcm_mobile_sync_compose_hint_list(qdr_core_t *core, qdrm_mobile_sync_t *msync, qd_composed_field_t *field)
+{
+    qd_compose_start_list(field);
+    qdr_address_t *addr = DEQ_HEAD(msync->added_addrs);
+    while (addr) {
+        qd_compose_insert_int(field, addr->treatment);
+        addr = DEQ_NEXT_N(SYNC_ADD, addr);
+    }
+    qd_compose_end_list(field);
+}
 
 
 static qd_message_t *qcm_mobile_sync_compose_differential_mau(qdr_core_t *core, qdrm_mobile_sync_t *msync, const char *address)
@@ -152,20 +174,18 @@ static qd_message_t *qcm_mobile_sync_compose_differential_mau(qdr_core_t *core, 
     qd_compose_insert_symbol(body, "mobile_seq");
     qd_compose_insert_long(body, msync->mobile_seq);
 
+    qd_compose_insert_symbol(body, "hints");
+    qcm_mobile_sync_compose_hint_list(core, msync, body);
+
     qd_compose_insert_symbol(body, "add");
     qcm_mobile_sync_compose_addr_list(core, msync, body, true);
 
     qd_compose_insert_symbol(body, "del");
     qcm_mobile_sync_compose_addr_list(core, msync, body, false);
 
-    //
-    // TODO - Hints?
-    //
-
     qd_compose_end_map(body);
 
     qd_message_compose_3(msg, headers, body);
-
     return msg;
 }
 
@@ -219,7 +239,7 @@ static void qcm_mobile_sync_on_timer_CT(qdr_core_t *core, void *context)
     //
     // Trace log the activity of this sequence update.
     //
-    qd_log(msync->log, QD_LOG_TRACE, "New mobile sequence: seq=%"PRIu64", addrs_added=%ld, addrs_deleted=%ld, fanout=%d",
+    qd_log(msync->log, QD_LOG_INFO, "New mobile sequence: seq=%"PRIu64", addrs_added=%ld, addrs_deleted=%ld, fanout=%d",
            msync->mobile_seq, added_count, deleted_count, fanout);
 }
 
@@ -243,6 +263,9 @@ static void qcm_mobile_sync_on_message_CT(void         *context,
 
 static void qcm_mobile_sync_on_became_local_dest_CT(qdrm_mobile_sync_t *msync, qdr_address_t *addr)
 {
+    if (!qcm_mobile_sync_addr_is_mobile(addr))
+        return;
+
     if (BIT_IS_SET(addr->sync_mask, ADDR_SYNC_IN_ADD_LIST)) {
         assert(false);
         return;
@@ -265,6 +288,9 @@ static void qcm_mobile_sync_on_became_local_dest_CT(qdrm_mobile_sync_t *msync, q
 
 static void qcm_mobile_sync_on_no_longer_local_dest_CT(qdrm_mobile_sync_t *msync, qdr_address_t *addr)
 {
+    if (!qcm_mobile_sync_addr_is_mobile(addr))
+        return;
+
     if (BIT_IS_SET(addr->sync_mask, ADDR_SYNC_IN_DEL_LIST)) {
         assert(false);
         return;
@@ -274,7 +300,7 @@ static void qcm_mobile_sync_on_no_longer_local_dest_CT(qdrm_mobile_sync_t *msync
         //
         // If the address was added since the last update, simply forget that it was added.
         //
-        DEQ_REMOVE_N(SYNC_ADD, msync->deleted_addrs, addr);
+        DEQ_REMOVE_N(SYNC_ADD, msync->added_addrs, addr);
         BIT_CLEAR(addr->sync_mask, ADDR_SYNC_IN_ADD_LIST);
         qcm_mobile_sync_address_removed_from_list(msync->core, addr);
     } else {
