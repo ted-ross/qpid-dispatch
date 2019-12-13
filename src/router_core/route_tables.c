@@ -338,6 +338,9 @@ static void qdr_add_router_CT(qdr_core_t *core, qdr_action_t *action, bool disca
         rnode->valid_origins     = qd_bitmask(0);
         rnode->cost              = 0;
 
+        qd_iterator_reset_view(iter, ITER_VIEW_ALL);
+        rnode->wire_address = (char*) qd_iterator_copy(iter);
+
         //
         // Insert at the head of the list because we don't yet know the cost to this
         // router node and we've set the cost to zero.  This puts it in a properly-sorted

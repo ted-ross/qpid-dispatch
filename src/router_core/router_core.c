@@ -220,6 +220,7 @@ void qdr_router_node_free(qdr_core_t *core, qdr_node_t *rnode)
     DEQ_REMOVE(core->routers, rnode);
     core->routers_by_mask_bit[rnode->mask_bit] = 0;
     core->cost_epoch++;
+    free(rnode->wire_address);
     free_qdr_node_t(rnode);
 }
 
@@ -690,6 +691,7 @@ void qdr_core_remove_address_config(qdr_core_t *core, qdr_address_config_t *addr
         free_address_config(addr);
     qd_iterator_free(pattern);
 }
+
 
 void qdr_add_link_ref(qdr_link_ref_list_t *ref_list, qdr_link_t *link, int cls)
 {

@@ -350,6 +350,7 @@ struct qdr_node_t {
     qd_bitmask_t     *valid_origins;
     int               cost;
     uint64_t          mobile_seq;
+    char             *wire_address;       ///< The address of this router in non-hashed form
 };
 
 DEQ_DECLARE(qdr_node_t, qdr_node_list_t);
