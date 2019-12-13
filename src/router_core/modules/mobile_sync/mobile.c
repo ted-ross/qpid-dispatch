@@ -47,6 +47,7 @@ static const char *HAVE_SEQ   = "have_seq";
 #define ADDR_SYNC_DELETION_WAS_BLOCKED  0x00000001
 #define ADDR_SYNC_IN_ADD_LIST           0x00000002
 #define ADDR_SYNC_IN_DEL_LIST           0x00000004
+#define ADDR_SYNC_TO_BE_DELETED         0x00000008
 
 #define BIT_SET(M,B)   M |= B
 #define BIT_CLEAR(M,B) M &= ~B
@@ -339,7 +340,7 @@ static void qcm_mobile_sync_on_timer_CT(qdr_core_t *core, void *context)
     //
     // Trace log the activity of this sequence update.
     //
-    qd_log(msync->log, QD_LOG_INFO, "New mobile sequence: seq=%"PRIu64", addrs_added=%ld, addrs_deleted=%ld, fanout=%d",
+    qd_log(msync->log, QD_LOG_INFO, "New mobile sequence: mobile_seq=%"PRIu64", addrs_added=%ld, addrs_deleted=%ld, fanout=%d",
            msync->mobile_seq, added_count, deleted_count, fanout);
 }
 
@@ -359,11 +360,21 @@ static void qcm_mobile_sync_on_mar_CT(qdrm_mobile_sync_t *msync, qd_iterator_t *
 
         qdr_node_t *router = qdc_mobile_sync_router_by_id(msync, id_field);
         if (!!router) {
-            qd_log(msync->log, QD_LOG_INFO, "Received MAR from %s, have_seq=%"PRIu64, router->wire_address, have_seq);
+            qd_log(msync->log, QD_LOG_INFO, "Received MAR from %s, have_seq=%"PRIu64,
+                   (const char*) qd_hash_key_by_handle(router->owning_addr->hash_handle) + 1, have_seq);
 
             if (have_seq < msync->mobile_seq) {
+                //
+                // The requestor's view of our mobile_seq is less than our actual mobile_sync.
+                // Send them an absolute MAU to get them caught up to the present.
+                //
                 qd_message_t *mau = qcm_mobile_sync_compose_absolute_mau(msync, router->wire_address);
                 (void) qdr_forward_message_CT(msync->core, router->owning_addr, mau, 0, true, true);
+
+                //
+                // Trace log the activity of this sequence update.
+                //
+                qd_log(msync->log, QD_LOG_INFO, "Sent MAU to requestor: mobile_seq=%"PRIu64, msync->mobile_seq);
             }
         }
     }
