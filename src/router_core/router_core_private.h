@@ -804,8 +804,6 @@ struct qdr_core_t {
     // Route table section
     //
     void                 *rt_context;
-    qdr_mobile_added_t    rt_mobile_added;   // Remove
-    qdr_mobile_removed_t  rt_mobile_removed; // Remove
     qdr_set_mobile_seq_t  rt_set_mobile_seq;
     qdr_link_lost_t       rt_link_lost;
 
@@ -930,8 +928,6 @@ void qdr_forward_on_message_CT(qdr_core_t *core, qdr_subscription_t *sub, qdr_li
 void qdr_in_process_send_to_CT(qdr_core_t *core, qd_iterator_t *address, qd_message_t *msg, bool exclude_inprocess, bool control);
 void qdr_agent_enqueue_response_CT(qdr_core_t *core, qdr_query_t *query);
 
-void qdr_post_mobile_added_CT(qdr_core_t *core, const char *address_hash, qd_address_treatment_t treatment);
-void qdr_post_mobile_removed_CT(qdr_core_t *core, const char *address_hash);
 void qdr_post_set_mobile_seq_CT(qdr_core_t *core, uint64_t mobile_seq);
 void qdr_post_link_lost_CT(qdr_core_t *core, int link_maskbit);
 

@@ -95,20 +95,11 @@ class RouterEngine(object):
                 raise ValueError("No router configuration found")
         return self._config
 
-    def addressAdded(self, addr, treatment):
-        """
-        """
-        pass
-
-
-    def addressRemoved(self, addr):
-        """
-        """
-        pass
-
 
     def setMobileSeq(self, mobile_seq):
         """
+        This router's mobile sequence number has been changed and the Python router needs to store
+        this number and immediately send a router-advertisement message to reflect the change.
         """
         self.link_state_engine.set_mobile_seq(mobile_seq)
         self.link_state_engine.send_ra(time.time())
@@ -116,6 +107,8 @@ class RouterEngine(object):
         
     def linkLost(self, link_id):
         """
+        The control-link to a neighbor has been dropped.  We can cancel the neighbor from the
+        link-state immediately instead of waiting for the hello-timeout to expire.
         """
         self.node_tracker.link_lost(link_id)
 
@@ -130,6 +123,7 @@ class RouterEngine(object):
             self.node_tracker.tick(now)
         except Exception:
             self.log(LOG_ERROR, "Exception in timer processing\n%s" % format_exc(LOG_STACK_LIMIT))
+
 
     def handleControlMessage(self, opcode, body, link_id, cost):
         """
@@ -160,6 +154,7 @@ class RouterEngine(object):
             self.log(LOG_ERROR, "Exception in control message processing\n%s" % format_exc(LOG_STACK_LIMIT))
             self.log(LOG_ERROR, "Control message error: opcode=%s body=%r" % (opcode, body))
 
+
     def receive(self, message, link_id, cost):
         """
         This is the IoAdapter message-receive handler
@@ -170,6 +165,7 @@ class RouterEngine(object):
             self.log(LOG_ERROR, "Exception in raw message processing\n%s" % format_exc(LOG_STACK_LIMIT))
             self.log(LOG_ERROR, "Exception in raw message processing: properties=%r body=%r" %
                      (message.properties, message.body))
+
 
     def getRouterData(self, kind):
         """

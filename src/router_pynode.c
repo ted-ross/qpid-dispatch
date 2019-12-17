@@ -31,8 +31,6 @@
 static qd_log_source_t *log_source     = 0;
 static PyObject        *pyRouter       = 0;
 static PyObject        *pyTick         = 0;
-static PyObject        *pyAdded        = 0;
-static PyObject        *pyRemoved      = 0;
 static PyObject        *pySetMobileSeq = 0;
 static PyObject        *pyLinkLost     = 0;
 
@@ -362,45 +360,6 @@ static PyTypeObject RouterAdapterType = {
 };
 
 
-static void qd_router_mobile_added(void *context, const char *address_hash, qd_address_treatment_t treatment)
-{
-    qd_router_t *router = (qd_router_t*) context;
-    PyObject    *pArgs;
-    PyObject    *pValue;
-
-    if (pyAdded && router->router_mode == QD_ROUTER_MODE_INTERIOR) {
-        qd_python_lock_state_t lock_state = qd_python_lock();
-        pArgs = PyTuple_New(2);
-        PyTuple_SetItem(pArgs, 0, PyUnicode_FromString(address_hash));
-        PyTuple_SetItem(pArgs, 1, PyLong_FromLong((long) treatment));
-        pValue = PyObject_CallObject(pyAdded, pArgs);
-        qd_error_py();
-        Py_DECREF(pArgs);
-        Py_XDECREF(pValue);
-        qd_python_unlock(lock_state);
-    }
-}
-
-
-static void qd_router_mobile_removed(void *context, const char *address_hash)
-{
-    qd_router_t *router = (qd_router_t*) context;
-    PyObject    *pArgs;
-    PyObject    *pValue;
-
-    if (pyRemoved && router->router_mode == QD_ROUTER_MODE_INTERIOR) {
-        qd_python_lock_state_t lock_state = qd_python_lock();
-        pArgs = PyTuple_New(1);
-        PyTuple_SetItem(pArgs, 0, PyUnicode_FromString(address_hash));
-        pValue = PyObject_CallObject(pyRemoved, pArgs);
-        qd_error_py();
-        Py_DECREF(pArgs);
-        Py_XDECREF(pValue);
-        qd_python_unlock(lock_state);
-    }
-}
-
-
 static void qd_router_set_mobile_seq(void *context, uint64_t mobile_seq)
 {
     qd_router_t *router = (qd_router_t*) context;
@@ -446,8 +405,6 @@ qd_error_t qd_router_python_setup(qd_router_t *router)
 
     qdr_core_route_table_handlers(router->router_core,
                                   router,
-                                  qd_router_mobile_added,
-                                  qd_router_mobile_removed,
                                   qd_router_set_mobile_seq,
                                   qd_router_link_lost);
 
@@ -516,8 +473,6 @@ qd_error_t qd_router_python_setup(qd_router_t *router)
     QD_ERROR_PY_RET();
 
     pyTick = PyObject_GetAttrString(pyRouter, "handleTimerTick"); QD_ERROR_PY_RET();
-    pyAdded = PyObject_GetAttrString(pyRouter, "addressAdded"); QD_ERROR_PY_RET();
-    pyRemoved = PyObject_GetAttrString(pyRouter, "addressRemoved"); QD_ERROR_PY_RET();
     pySetMobileSeq = PyObject_GetAttrString(pyRouter, "setMobileSeq"); QD_ERROR_PY_RET();
     pyLinkLost = PyObject_GetAttrString(pyRouter, "linkLost"); QD_ERROR_PY_RET();
     return qd_error_code();

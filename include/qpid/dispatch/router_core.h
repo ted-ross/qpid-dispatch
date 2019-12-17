@@ -91,15 +91,11 @@ void qdr_core_mobile_seq_advanced(qdr_core_t *core, int router_maskbit);
 void qdr_core_map_destination(qdr_core_t *core, int router_maskbit, const char *address_hash, int treatment_hint); // Remove
 void qdr_core_unmap_destination(qdr_core_t *core, int router_maskbit, const char *address_hash);                   // Remove
 
-typedef void (*qdr_mobile_added_t)   (void *context, const char *address_hash, qd_address_treatment_t treatment);  // Remove
-typedef void (*qdr_mobile_removed_t) (void *context, const char *address_hash);                                    // Remove
 typedef void (*qdr_set_mobile_seq_t) (void *context, uint64_t mobile_seq);
 typedef void (*qdr_link_lost_t)      (void *context, int link_maskbit);
 
 void qdr_core_route_table_handlers(qdr_core_t           *core, 
                                    void                 *context,
-                                   qdr_mobile_added_t    mobile_added,   // Remove
-                                   qdr_mobile_removed_t  mobile_removed, // Remove
                                    qdr_set_mobile_seq_t  set_mobile_seq,
                                    qdr_link_lost_t       link_lost);
 

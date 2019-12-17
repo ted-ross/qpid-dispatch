@@ -20,6 +20,7 @@
 #include "module.h"
 #include "router_core_private.h"
 #include "core_events.h"
+#include "route_control.h"
 #include <qpid/dispatch/ctools.h>
 #include <qpid/dispatch/log.h>
 #include <qpid/dispatch/compose.h>
@@ -69,6 +70,26 @@ typedef struct {
 //================================================================================
 // Helper Functions
 //================================================================================
+
+static qd_address_treatment_t qcm_mobile_sync_default_treatment(qdr_core_t *core, int hint) {
+    switch (hint) {
+    case QD_TREATMENT_MULTICAST_FLOOD:
+        return QD_TREATMENT_MULTICAST_FLOOD;
+    case QD_TREATMENT_MULTICAST_ONCE:
+        return QD_TREATMENT_MULTICAST_ONCE;
+    case QD_TREATMENT_ANYCAST_CLOSEST:
+        return QD_TREATMENT_ANYCAST_CLOSEST;
+    case QD_TREATMENT_ANYCAST_BALANCED:
+        return QD_TREATMENT_ANYCAST_BALANCED;
+    case QD_TREATMENT_LINK_BALANCED:
+        return QD_TREATMENT_LINK_BALANCED;
+    case QD_TREATMENT_UNAVAILABLE:
+        return QD_TREATMENT_UNAVAILABLE;
+    default:
+        return core->qd->default_treatment == QD_TREATMENT_UNAVAILABLE ? QD_TREATMENT_ANYCAST_BALANCED : core->qd->default_treatment;
+    }
+}
+
 
 static bool qcm_mobile_sync_addr_is_mobile(qdr_address_t *addr)
 {
@@ -132,9 +153,6 @@ static qd_composed_field_t *qcm_mobile_sync_message_headers(const char *address,
     qd_compose_insert_null(field);            // message-id
     qd_compose_insert_null(field);            // user-id
     qd_compose_insert_string(field, address); // to
-    qd_compose_insert_null(field);            // subject
-    qd_compose_insert_null(field);            // reply-to
-    qd_compose_insert_null(field);            // correlation-id
     qd_compose_end_list(field);
 
     field = qd_compose(QD_PERFORMATIVE_APPLICATION_PROPERTIES, field);
@@ -257,9 +275,7 @@ static qd_message_t *qcm_mobile_sync_compose_absolute_mau(qdrm_mobile_sync_t *ms
         addr = DEQ_NEXT(addr);
     }
     qd_compose_end_list(body);
-
     qd_compose_end_map(body);
-
     qd_message_compose_3(msg, headers, body);
     return msg;
 }
@@ -383,14 +399,204 @@ static void qcm_mobile_sync_on_mar_CT(qdrm_mobile_sync_t *msync, qd_iterator_t *
 
 static void qcm_mobile_sync_on_mau_CT(qdrm_mobile_sync_t *msync, qd_iterator_t *body_iter)
 {
+     qd_parsed_field_t *body = qd_parse(body_iter);
+
+    if (!!body && qd_parse_is_map(body)) {
+        qd_parsed_field_t *id_field         = qd_parse_value_by_key(body, ID);
+        qd_parsed_field_t *mobile_seq_field = qd_parse_value_by_key(body, MOBILE_SEQ);
+        uint64_t           mobile_seq       = qd_parse_as_ulong(mobile_seq_field);
+
+        qdr_node_t *router = qdc_mobile_sync_router_by_id(msync, id_field);
+        if (!!router) {
+            const char        *router_id   = (const char*) qd_hash_key_by_handle(router->owning_addr->hash_handle) + 1;
+            qd_parsed_field_t *add_field   = qd_parse_value_by_key(body, ADD);
+            qd_parsed_field_t *del_field   = qd_parse_value_by_key(body, DEL);
+            qd_parsed_field_t *exist_field = qd_parse_value_by_key(body, EXIST);
+            qd_parsed_field_t *hints_field = qd_parse_value_by_key(body, HINTS);
+            uint32_t           hints_count = 0;
+            qdr_address_t     *addr;
+
+            //
+            // Validate the fields and determine what kind of MAU we've received.
+            //
+            if (!!hints_field && qd_parse_is_list(hints_field))
+                hints_count = qd_parse_sub_count(hints_field);
+
+            //
+            // Validate the exist, add, and del fields.  They must, if they exist, be lists.
+            // If there is an exist field, there must not be an add or del field.
+            // If there is no exist field, there must be both an add and a del field.
+            //
+            if ((!!exist_field && !qd_parse_is_list(exist_field))
+                || (!!add_field && !qd_parse_is_list(add_field))
+                || (!!del_field && !qd_parse_is_list(del_field))
+                || (!!exist_field && (!!add_field || !!del_field))
+                || (!exist_field && (!add_field || !del_field))) {
+                qd_log(msync->log, QD_LOG_ERROR, "Received malformed MAU from %s", router_id);
+                return;
+            }
+
+            //
+            // Check the exist/add list size against the hints-list size.  If they are not
+            // exactly equal, ignore the hints.
+            //
+            if (!!exist_field) {
+                if (hints_count != qd_parse_sub_count(exist_field))
+                    hints_count = 0;
+            } else {
+                if (hints_count != qd_parse_sub_count(add_field))
+                    hints_count = 0;
+            }
+
+            qd_log(msync->log, QD_LOG_INFO, "Received MAU (%s) from %s, mobile_seq=%"PRIu64,
+                   !!exist_field ? "absolute" : "differential", router_id, mobile_seq);
+
+            //
+            // If this is an absolute MAU, the existing set of addresses for this router must
+            // be marked as needing deletion, in case they are not mentioned in the existing
+            // address list.
+            //
+            if (!!exist_field) {
+                addr = DEQ_HEAD(msync->core->addrs);
+                while (!!addr) {
+                    if (qcm_mobile_sync_addr_is_mobile(addr) && !!qd_bitmask_value(addr->rnodes, router->mask_bit))
+                        BIT_SET(addr->sync_mask, ADDR_SYNC_TO_BE_DELETED);
+                    addr = DEQ_NEXT(addr);
+                }
+            }
+
+            //
+            // Run through the add/exist list (depending on which we have) and lookup/add the
+            // addresses, associating them with the sending router.  Clear the to-delete bits
+            // on every address touched.  If hints are available, use them for addresses that
+            // are newly created.
+            //
+            qd_parsed_field_t *field      = !!exist_field ? exist_field : add_field;
+            qd_parsed_field_t *addr_field = qd_field_first_child(field);
+            qd_parsed_field_t *hint_field = !!hints_count ? qd_field_first_child(hints_field) : 0;
+            while (addr_field) {
+                qd_iterator_t *iter = qd_parse_raw(addr_field);
+                qdr_address_t *addr = 0;
+                int treatment_hint = !!hint_field ? qd_parse_as_int(hint_field) : -1;
+
+                qd_hash_retrieve(msync->core->addr_hash, iter, (void**) &addr);
+                if (!addr) {
+                    qdr_address_config_t   *addr_config;
+                    qd_address_treatment_t  treatment =
+                        qdr_treatment_for_address_hash_with_default_CT(msync->core,
+                                                                       iter,
+                                                                       qcm_mobile_sync_default_treatment(msync->core, treatment_hint),
+                                                                       &addr_config);
+                    addr = qdr_address_CT(msync->core, treatment, addr_config);
+                    if (!addr) {
+                        qd_log(msync->log, QD_LOG_CRITICAL, "map_destination: ignored");
+                        break;  // TODO - fix logic flow here
+                    }
+                    qd_hash_insert(msync->core->addr_hash, iter, addr, &addr->hash_handle);
+                    DEQ_ITEM_INIT(addr);
+                    DEQ_INSERT_TAIL(msync->core->addrs, addr);
+
+                    //
+                    // if the address is a link route, add the pattern to the wildcard
+                    // address parse tree
+                    //
+                    {
+                        const char *a_str = (const char*) qd_hash_key_by_handle(addr->hash_handle);
+                        if (QDR_IS_LINK_ROUTE(a_str[0])) {
+                            qdr_link_route_map_pattern_CT(msync->core, iter, addr);
+                        }
+                    }
+                }
+
+                BIT_CLEAR(addr->sync_mask, ADDR_SYNC_TO_BE_DELETED);
+                if (!qd_bitmask_value(addr->rnodes, router->mask_bit)) {
+                    qd_bitmask_set_bit(addr->rnodes, router->mask_bit);
+                    router->ref_count++;
+                    addr->cost_epoch--;
+                    qdr_addr_start_inlinks_CT(msync->core, addr);
+       
+                    //
+                    // Raise an address event if this is the first destination for the address
+                    //
+                    if (qd_bitmask_cardinality(addr->rnodes) + DEQ_SIZE(addr->rlinks) == 1)
+                        qdrc_event_addr_raise(msync->core, QDRC_EVENT_ADDR_BECAME_DEST, addr);
+                    else if (qd_bitmask_cardinality(addr->rnodes) == 1 && DEQ_SIZE(addr->rlinks) == 1)
+                        qdrc_event_addr_raise(msync->core, QDRC_EVENT_ADDR_TWO_DEST, addr);
+                }
+
+                addr_field = qd_field_next_child(addr_field);
+                hint_field = !!hint_field ? qd_field_next_child(hint_field) : 0;
+            }
+
+            //
+            // Run through the delete list, if it exists, and disassociate each address from the
+            // sending router.  Check the address to see if it needs to be deleted.
+            //
+            if (!!del_field) {
+                addr_field = qd_field_first_child(del_field);
+                while (!!addr_field) {
+                    qd_iterator_t *iter = qd_parse_raw(addr_field);
+                    qdr_address_t *addr = 0;
+
+                    qd_hash_retrieve(msync->core->addr_hash, iter, (void**) &addr);
+                    if (!!addr) {
+                        if (qd_bitmask_value(addr->rnodes, router->mask_bit)) {
+                            qd_bitmask_clear_bit(addr->rnodes, router->mask_bit);
+                            router->ref_count--;
+                            addr->cost_epoch--;
+
+                            //
+                            // Raise an address event if this was the last destination for the address
+                            //
+                            if (qd_bitmask_cardinality(addr->rnodes) + DEQ_SIZE(addr->rlinks) == 0)
+                                qdrc_event_addr_raise(msync->core, QDRC_EVENT_ADDR_NO_LONGER_DEST, addr);
+                            else if (qd_bitmask_cardinality(addr->rnodes) == 0 && DEQ_SIZE(addr->rlinks) == 1)
+                                qdrc_event_addr_raise(msync->core, QDRC_EVENT_ADDR_ONE_LOCAL_DEST, addr);
+
+                            qdr_check_addr_CT(msync->core, addr);
+                        }
+                    }
+                    addr_field = qd_field_next_child(addr_field);
+                }
+            }
+
+            //
+            // If this was an absolute MAU, disassociate any addresses remaining with the
+            // to-delete flag set.
+            //
+            if (!!exist_field) {
+                addr = DEQ_HEAD(msync->core->addrs);
+                while (!!addr) {
+                    if (qcm_mobile_sync_addr_is_mobile(addr)
+                        && !!qd_bitmask_value(addr->rnodes, router->mask_bit)
+                        && BIT_IS_SET(addr->sync_mask, ADDR_SYNC_TO_BE_DELETED)) {
+                        qd_bitmask_clear_bit(addr->rnodes, router->mask_bit);
+                        router->ref_count--;
+                        addr->cost_epoch--;
+
+                        //
+                        // Raise an address event if this was the last destination for the address
+                        //
+                        if (qd_bitmask_cardinality(addr->rnodes) + DEQ_SIZE(addr->rlinks) == 0)
+                            qdrc_event_addr_raise(msync->core, QDRC_EVENT_ADDR_NO_LONGER_DEST, addr);
+                        else if (qd_bitmask_cardinality(addr->rnodes) == 0 && DEQ_SIZE(addr->rlinks) == 1)
+                            qdrc_event_addr_raise(msync->core, QDRC_EVENT_ADDR_ONE_LOCAL_DEST, addr);
+
+                        qdr_check_addr_CT(msync->core, addr);
+                    }
+                    addr = DEQ_NEXT(addr);
+                }
+            }
+        }
+    }
 }
 
 
 static void qcm_mobile_sync_on_message_CT(void         *context,
                                           qd_message_t *msg,
-                                          int           link_maskbit,
-                                          int           inter_router_cost,
-                                          uint64_t      conn_id)
+                                          int           unused_link_maskbit,
+                                          int           unused_inter_router_cost,
+                                          uint64_t      unused_conn_id)
 {
     qdrm_mobile_sync_t *msync     = (qdrm_mobile_sync_t*) context;
     qd_iterator_t      *ap_iter   = qd_message_field_iterator(msg, QD_FIELD_APPLICATION_PROPERTIES);
@@ -470,6 +676,29 @@ static void qcm_mobile_sync_on_no_longer_local_dest_CT(qdrm_mobile_sync_t *msync
 static void qcm_mobile_sync_on_router_flush_CT(qdrm_mobile_sync_t *msync, qdr_node_t *router)
 {
     router->mobile_seq = 0;
+    qdr_address_t *addr = DEQ_HEAD(msync->core->addrs);
+    while (!!addr) {
+        if (qcm_mobile_sync_addr_is_mobile(addr)
+            && !!qd_bitmask_value(addr->rnodes, router->mask_bit)) {
+            //
+            // This is an address mapped to the router.  Unmap the address and clean up.
+            //
+            qd_bitmask_clear_bit(addr->rnodes, router->mask_bit);
+            router->ref_count--;
+            addr->cost_epoch--;
+
+            //
+            // Raise an address event if this was the last destination for the address
+            //
+            if (qd_bitmask_cardinality(addr->rnodes) + DEQ_SIZE(addr->rlinks) == 0)
+                qdrc_event_addr_raise(msync->core, QDRC_EVENT_ADDR_NO_LONGER_DEST, addr);
+            else if (qd_bitmask_cardinality(addr->rnodes) == 0 && DEQ_SIZE(addr->rlinks) == 1)
+                qdrc_event_addr_raise(msync->core, QDRC_EVENT_ADDR_ONE_LOCAL_DEST, addr);
+
+            qdr_check_addr_CT(msync->core, addr);
+        }
+        addr = DEQ_NEXT(addr);
+    }
 }
 
 
