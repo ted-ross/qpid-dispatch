@@ -219,7 +219,7 @@ void qdr_router_node_free(qdr_core_t *core, qdr_node_t *rnode)
     DEQ_REMOVE(core->routers, rnode);
     core->routers_by_mask_bit[rnode->mask_bit] = 0;
     core->cost_epoch++;
-    free(rnode->wire_address);
+    free(rnode->wire_address_ma);
     free_qdr_node_t(rnode);
 }
 

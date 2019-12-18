@@ -144,14 +144,16 @@ void qdr_core_unmap_destination(qdr_core_t *core, int router_maskbit, const char
     qdr_action_enqueue(core, action);
 }
 
-void qdr_core_route_table_handlers(qdr_core_t           *core, 
-                                   void                 *context,
-                                   qdr_set_mobile_seq_t  set_mobile_seq,
-                                   qdr_link_lost_t       link_lost)
+void qdr_core_route_table_handlers(qdr_core_t              *core, 
+                                   void                    *context,
+                                   qdr_set_mobile_seq_t     set_mobile_seq,
+                                   qdr_set_my_mobile_seq_t  set_my_mobile_seq,
+                                   qdr_link_lost_t          link_lost)
 {
-    core->rt_context        = context;
-    core->rt_set_mobile_seq = set_mobile_seq;
-    core->rt_link_lost      = link_lost;
+    core->rt_context           = context;
+    core->rt_set_mobile_seq    = set_mobile_seq;
+    core->rt_set_my_mobile_seq = set_my_mobile_seq;
+    core->rt_link_lost         = link_lost;
 }
 
 
@@ -332,7 +334,11 @@ static void qdr_add_router_CT(qdr_core_t *core, qdr_action_t *action, bool disca
         rnode->valid_origins     = qd_bitmask(0);
 
         qd_iterator_reset_view(iter, ITER_VIEW_ALL);
-        rnode->wire_address = (char*) qd_iterator_copy(iter);
+        int addr_len = qd_iterator_length(iter);
+
+        rnode->wire_address_ma = (char*) malloc(addr_len + 4);
+        qd_iterator_ncopy(iter, (unsigned char*) rnode->wire_address_ma, addr_len);
+        strcpy(rnode->wire_address_ma + addr_len, ".ma");
 
         //
         // Insert at the head of the list because we don't yet know the cost to this
@@ -830,7 +836,13 @@ static void qdr_unsubscribe_CT(qdr_core_t *core, qdr_action_t *action, bool disc
 
 static void qdr_do_set_mobile_seq(qdr_core_t *core, qdr_general_work_t *work)
 {
-    core->rt_set_mobile_seq(core->rt_context, work->in_conn_id);
+    core->rt_set_mobile_seq(core->rt_context, work->maskbit, work->in_conn_id);
+}
+
+
+static void qdr_do_set_my_mobile_seq(qdr_core_t *core, qdr_general_work_t *work)
+{
+    core->rt_set_my_mobile_seq(core->rt_context, work->in_conn_id);
 }
 
 
@@ -840,9 +852,18 @@ static void qdr_do_link_lost(qdr_core_t *core, qdr_general_work_t *work)
 }
 
 
-void qdr_post_set_mobile_seq_CT(qdr_core_t *core, uint64_t mobile_seq)
+void qdr_post_set_mobile_seq_CT(qdr_core_t *core, int router_maskbit, uint64_t mobile_seq)
 {
     qdr_general_work_t *work = qdr_general_work(qdr_do_set_mobile_seq);
+    work->in_conn_id = mobile_seq;
+    work->maskbit    = router_maskbit;
+    qdr_post_general_work_CT(core, work);
+}
+
+
+void qdr_post_set_my_mobile_seq_CT(qdr_core_t *core, uint64_t mobile_seq)
+{
+    qdr_general_work_t *work = qdr_general_work(qdr_do_set_my_mobile_seq);
     work->in_conn_id = mobile_seq;
     qdr_post_general_work_CT(core, work);
 }

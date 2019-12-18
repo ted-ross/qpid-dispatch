@@ -28,11 +28,12 @@
 #include "entity_cache.h"
 #include "python_private.h"
 
-static qd_log_source_t *log_source     = 0;
-static PyObject        *pyRouter       = 0;
-static PyObject        *pyTick         = 0;
-static PyObject        *pySetMobileSeq = 0;
-static PyObject        *pyLinkLost     = 0;
+static qd_log_source_t *log_source       = 0;
+static PyObject        *pyRouter         = 0;
+static PyObject        *pyTick           = 0;
+static PyObject        *pySetMobileSeq   = 0;
+static PyObject        *pySetMyMobileSeq = 0;
+static PyObject        *pyLinkLost       = 0;
 
 typedef struct {
     PyObject_HEAD
@@ -342,7 +343,7 @@ static PyMethodDef RouterAdapter_methods[] = {
     {"set_cost",            qd_set_cost,            METH_VARARGS, "Set the cost to reach a remote router"},
     {"set_valid_origins",   qd_set_valid_origins,   METH_VARARGS, "Set the valid origins for a remote router"},
     {"set_radius",          qd_set_radius,          METH_VARARGS, "Set the current topology radius"},
-    {"flush_destination",   qd_flush_destinations,  METH_VARARGS, "Remove all mapped destinations from a router"},
+    {"flush_destinations",  qd_flush_destinations,  METH_VARARGS, "Remove all mapped destinations from a router"},
     {"mobile_seq_advanced", qd_mobile_seq_advanced, METH_VARARGS, "Mobile sequence for a router moved ahead of the local value"},
     {"map_destination",     qd_map_destination,     METH_VARARGS, "Add a newly discovered destination mapping"},
     {"unmap_destination",   qd_unmap_destination,   METH_VARARGS, "Delete a destination mapping"},
@@ -360,7 +361,27 @@ static PyTypeObject RouterAdapterType = {
 };
 
 
-static void qd_router_set_mobile_seq(void *context, uint64_t mobile_seq)
+static void qd_router_set_mobile_seq(void *context, int router_mask_bit, uint64_t mobile_seq)
+{
+    qd_router_t *router = (qd_router_t*) context;
+    PyObject    *pArgs;
+    PyObject    *pValue;
+
+    if (pySetMobileSeq && router->router_mode == QD_ROUTER_MODE_INTERIOR) {
+        qd_python_lock_state_t lock_state = qd_python_lock();
+        pArgs = PyTuple_New(2);
+        PyTuple_SetItem(pArgs, 0, PyLong_FromLong((long) router_mask_bit));
+        PyTuple_SetItem(pArgs, 1, PyLong_FromLong((long) mobile_seq));
+        pValue = PyObject_CallObject(pySetMobileSeq, pArgs);
+        qd_error_py();
+        Py_DECREF(pArgs);
+        Py_XDECREF(pValue);
+        qd_python_unlock(lock_state);
+    }
+}
+
+
+static void qd_router_set_my_mobile_seq(void *context, uint64_t mobile_seq)
 {
     qd_router_t *router = (qd_router_t*) context;
     PyObject    *pArgs;
@@ -370,7 +391,7 @@ static void qd_router_set_mobile_seq(void *context, uint64_t mobile_seq)
         qd_python_lock_state_t lock_state = qd_python_lock();
         pArgs = PyTuple_New(1);
         PyTuple_SetItem(pArgs, 0, PyLong_FromLong((long) mobile_seq));
-        pValue = PyObject_CallObject(pySetMobileSeq, pArgs);
+        pValue = PyObject_CallObject(pySetMyMobileSeq, pArgs);
         qd_error_py();
         Py_DECREF(pArgs);
         Py_XDECREF(pValue);
@@ -406,6 +427,7 @@ qd_error_t qd_router_python_setup(qd_router_t *router)
     qdr_core_route_table_handlers(router->router_core,
                                   router,
                                   qd_router_set_mobile_seq,
+                                  qd_router_set_my_mobile_seq,
                                   qd_router_link_lost);
 
     //
@@ -472,9 +494,10 @@ qd_error_t qd_router_python_setup(qd_router_t *router)
     Py_DECREF(adapterType);
     QD_ERROR_PY_RET();
 
-    pyTick = PyObject_GetAttrString(pyRouter, "handleTimerTick"); QD_ERROR_PY_RET();
-    pySetMobileSeq = PyObject_GetAttrString(pyRouter, "setMobileSeq"); QD_ERROR_PY_RET();
-    pyLinkLost = PyObject_GetAttrString(pyRouter, "linkLost"); QD_ERROR_PY_RET();
+    pyTick           = PyObject_GetAttrString(pyRouter, "handleTimerTick"); QD_ERROR_PY_RET();
+    pySetMobileSeq   = PyObject_GetAttrString(pyRouter, "setMobileSeq"); QD_ERROR_PY_RET();
+    pySetMyMobileSeq = PyObject_GetAttrString(pyRouter, "setMyMobileSeq"); QD_ERROR_PY_RET();
+    pyLinkLost       = PyObject_GetAttrString(pyRouter, "linkLost"); QD_ERROR_PY_RET();
     return qd_error_code();
 }
 

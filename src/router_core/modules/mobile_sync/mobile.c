@@ -260,7 +260,8 @@ static qd_message_t *qcm_mobile_sync_compose_absolute_mau(qdrm_mobile_sync_t *ms
     qd_compose_start_list(body);
     qdr_address_t *addr = DEQ_HEAD(msync->core->addrs);
     while (!!addr) {
-        if (qcm_mobile_sync_addr_is_mobile(addr) && DEQ_SIZE(addr->rlinks) > 0) {
+        if (qcm_mobile_sync_addr_is_mobile(addr)
+            && (DEQ_SIZE(addr->rlinks) > 0 || DEQ_SIZE(addr->conns) > 0 || !!addr->exchange)) {
             const char *hash_key = (const char*) qd_hash_key_by_handle(addr->hash_handle);
             qd_compose_insert_string(body, hash_key);
         }
@@ -288,7 +289,7 @@ static qd_message_t *qcm_mobile_sync_compose_absolute_mau(qdrm_mobile_sync_t *ms
 static qd_message_t *qcm_mobile_sync_compose_mar(qdrm_mobile_sync_t *msync, qdr_node_t *router)
 {
     qd_message_t        *msg     = qd_message();
-    qd_composed_field_t *headers = qcm_mobile_sync_message_headers(router->wire_address, MAR);
+    qd_composed_field_t *headers = qcm_mobile_sync_message_headers(router->wire_address_ma, MAR);
     qd_composed_field_t *body    = qd_compose(QD_PERFORMATIVE_BODY_AMQP_VALUE, 0);
 
     qd_compose_start_map(body);
@@ -358,7 +359,7 @@ static void qcm_mobile_sync_on_timer_CT(qdr_core_t *core, void *context)
     // done _after_ sending the differential MAU to prevent a storm of un-needed MAR requests from
     // the other routers.
     //
-    qdr_post_set_mobile_seq_CT(core, msync->mobile_seq);
+    qdr_post_set_my_mobile_seq_CT(core, msync->mobile_seq);
 
     //
     // Trace log the activity of this sequence update.
@@ -389,7 +390,7 @@ static void qcm_mobile_sync_on_mar_CT(qdrm_mobile_sync_t *msync, qd_parsed_field
                 // The requestor's view of our mobile_seq is less than our actual mobile_sync.
                 // Send them an absolute MAU to get them caught up to the present.
                 //
-                qd_message_t *mau = qcm_mobile_sync_compose_absolute_mau(msync, router->wire_address);
+                qd_message_t *mau = qcm_mobile_sync_compose_absolute_mau(msync, router->wire_address_ma);
                 (void) qdr_forward_message_CT(msync->core, router->owning_addr, mau, 0, true, true);
                 qd_message_free(mau);
 
@@ -576,6 +577,7 @@ static void qcm_mobile_sync_on_mau_CT(qdrm_mobile_sync_t *msync, qd_parsed_field
             if (!!exist_field) {
                 addr = DEQ_HEAD(msync->core->addrs);
                 while (!!addr) {
+                    qdr_address_t *next_addr = DEQ_NEXT(addr);
                     if (qcm_mobile_sync_addr_is_mobile(addr)
                         && !!qd_bitmask_value(addr->rnodes, router->mask_bit)
                         && BIT_IS_SET(addr->sync_mask, ADDR_SYNC_TO_BE_DELETED)) {
@@ -593,9 +595,14 @@ static void qcm_mobile_sync_on_mau_CT(qdrm_mobile_sync_t *msync, qd_parsed_field
 
                         qdr_check_addr_CT(msync->core, addr);
                     }
-                    addr = DEQ_NEXT(addr);
+                    addr = next_addr;
                 }
             }
+
+            //
+            // Tell the python router about the new mobile sequence
+            //
+            qdr_post_set_mobile_seq_CT(msync->core, router->mask_bit, mobile_seq);
         }
     }
 }
@@ -639,10 +646,8 @@ static void qcm_mobile_sync_on_became_local_dest_CT(qdrm_mobile_sync_t *msync, q
     if (!qcm_mobile_sync_addr_is_mobile(addr))
         return;
 
-    if (BIT_IS_SET(addr->sync_mask, ADDR_SYNC_IN_ADD_LIST)) {
-        assert(false);
+    if (BIT_IS_SET(addr->sync_mask, ADDR_SYNC_IN_ADD_LIST))
         return;
-    }
 
     if (BIT_IS_SET(addr->sync_mask, ADDR_SYNC_IN_DEL_LIST)) {
         //
@@ -664,10 +669,8 @@ static void qcm_mobile_sync_on_no_longer_local_dest_CT(qdrm_mobile_sync_t *msync
     if (!qcm_mobile_sync_addr_is_mobile(addr))
         return;
 
-    if (BIT_IS_SET(addr->sync_mask, ADDR_SYNC_IN_DEL_LIST)) {
-        assert(false);
+    if (BIT_IS_SET(addr->sync_mask, ADDR_SYNC_IN_DEL_LIST))
         return;
-    }
 
     if (BIT_IS_SET(addr->sync_mask, ADDR_SYNC_IN_ADD_LIST)) {
         //
@@ -689,6 +692,7 @@ static void qcm_mobile_sync_on_router_flush_CT(qdrm_mobile_sync_t *msync, qdr_no
     router->mobile_seq = 0;
     qdr_address_t *addr = DEQ_HEAD(msync->core->addrs);
     while (!!addr) {
+        qdr_address_t *next_addr = DEQ_NEXT(addr);
         if (qcm_mobile_sync_addr_is_mobile(addr)
             && !!qd_bitmask_value(addr->rnodes, router->mask_bit)) {
             //
@@ -708,7 +712,7 @@ static void qcm_mobile_sync_on_router_flush_CT(qdrm_mobile_sync_t *msync, qdr_no
 
             qdr_check_addr_CT(msync->core, addr);
         }
-        addr = DEQ_NEXT(addr);
+        addr = next_addr;
     }
 }
 

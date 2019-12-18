@@ -350,7 +350,7 @@ struct qdr_node_t {
     qd_bitmask_t     *valid_origins;
     int               cost;
     uint64_t          mobile_seq;
-    char             *wire_address;       ///< The address of this router in non-hashed form
+    char             *wire_address_ma;    ///< The address of this router's mobile-sync agent in non-hashed form
 };
 
 DEQ_DECLARE(qdr_node_t, qdr_node_list_t);
@@ -803,9 +803,10 @@ struct qdr_core_t {
     //
     // Route table section
     //
-    void                 *rt_context;
-    qdr_set_mobile_seq_t  rt_set_mobile_seq;
-    qdr_link_lost_t       rt_link_lost;
+    void                    *rt_context;
+    qdr_set_mobile_seq_t     rt_set_mobile_seq;
+    qdr_set_my_mobile_seq_t  rt_set_my_mobile_seq;
+    qdr_link_lost_t          rt_link_lost;
 
     //
     // Connection section
@@ -929,7 +930,8 @@ void qdr_forward_on_message_CT(qdr_core_t *core, qdr_subscription_t *sub, qdr_li
 void qdr_in_process_send_to_CT(qdr_core_t *core, qd_iterator_t *address, qd_message_t *msg, bool exclude_inprocess, bool control);
 void qdr_agent_enqueue_response_CT(qdr_core_t *core, qdr_query_t *query);
 
-void qdr_post_set_mobile_seq_CT(qdr_core_t *core, uint64_t mobile_seq);
+void qdr_post_set_mobile_seq_CT(qdr_core_t *core, int router_maskbit, uint64_t mobile_seq);
+void qdr_post_set_my_mobile_seq_CT(qdr_core_t *core, uint64_t mobile_seq);
 void qdr_post_link_lost_CT(qdr_core_t *core, int link_maskbit);
 
 void qdr_post_general_work_CT(qdr_core_t *core, qdr_general_work_t *work);

@@ -253,10 +253,13 @@ class NodeTracker(object):
                 self.link_state_changed = True
 
 
-    def set_my_mobile_seq(self, mobile_seq):
+    def set_mobile_seq(self, router_maskbit, mobile_seq):
         """
         """
-        pass
+        for node in self.nodes.values():
+            if node.maskbit == router_maskbit:
+                node.mobile_address_sequence = mobile_seq
+                return
 
 
     def in_flux_mode(self, now):

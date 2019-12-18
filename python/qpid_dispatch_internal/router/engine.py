@@ -96,7 +96,15 @@ class RouterEngine(object):
         return self._config
 
 
-    def setMobileSeq(self, mobile_seq):
+    def setMobileSeq(self, router_maskbit, mobile_seq):
+        """
+        Another router's mobile sequence number has been changed and the Python router needs to store
+        this number.
+        """
+        self.node_tracker.set_mobile_seq(router_maskbit, mobile_seq)
+
+        
+    def setMyMobileSeq(self, mobile_seq):
         """
         This router's mobile sequence number has been changed and the Python router needs to store
         this number and immediately send a router-advertisement message to reflect the change.
