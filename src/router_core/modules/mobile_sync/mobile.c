@@ -231,6 +231,8 @@ static qd_message_t *qcm_mobile_sync_compose_differential_mau(qdrm_mobile_sync_t
     qd_compose_end_map(body);
 
     qd_message_compose_3(msg, headers, body);
+    qd_compose_free(headers);
+    qd_compose_free(body);
     return msg;
 }
 
@@ -277,6 +279,8 @@ static qd_message_t *qcm_mobile_sync_compose_absolute_mau(qdrm_mobile_sync_t *ms
     qd_compose_end_list(body);
     qd_compose_end_map(body);
     qd_message_compose_3(msg, headers, body);
+    qd_compose_free(headers);
+    qd_compose_free(body);
     return msg;
 }
 
@@ -303,6 +307,8 @@ static qd_message_t *qcm_mobile_sync_compose_mar(qdrm_mobile_sync_t *msync, qdr_
     qd_compose_end_map(body);
 
     qd_message_compose_3(msg, headers, body);
+    qd_compose_free(headers);
+    qd_compose_free(body);
     return msg;
 }
 
@@ -345,6 +351,7 @@ static void qcm_mobile_sync_on_timer_CT(qdr_core_t *core, void *context)
     // Use the TOPOLOGICAL class address for sending.
     //
     int fanout = qdr_forward_message_CT(core, core->routerma_addr_T, mau, 0, true, true);
+    qd_message_free(mau);
 
     //
     // Post the updated mobile sequence number to the Python router.  It is important that this be
@@ -365,10 +372,8 @@ static void qcm_mobile_sync_on_timer_CT(qdr_core_t *core, void *context)
 // Message Handler
 //================================================================================
 
-static void qcm_mobile_sync_on_mar_CT(qdrm_mobile_sync_t *msync, qd_iterator_t *body_iter)
+static void qcm_mobile_sync_on_mar_CT(qdrm_mobile_sync_t *msync, qd_parsed_field_t *body)
 {
-    qd_parsed_field_t *body = qd_parse(body_iter);
-
     if (!!body && qd_parse_is_map(body)) {
         qd_parsed_field_t *id_field       = qd_parse_value_by_key(body, ID);
         qd_parsed_field_t *have_seq_field = qd_parse_value_by_key(body, HAVE_SEQ);
@@ -386,6 +391,7 @@ static void qcm_mobile_sync_on_mar_CT(qdrm_mobile_sync_t *msync, qd_iterator_t *
                 //
                 qd_message_t *mau = qcm_mobile_sync_compose_absolute_mau(msync, router->wire_address);
                 (void) qdr_forward_message_CT(msync->core, router->owning_addr, mau, 0, true, true);
+                qd_message_free(mau);
 
                 //
                 // Trace log the activity of this sequence update.
@@ -397,10 +403,8 @@ static void qcm_mobile_sync_on_mar_CT(qdrm_mobile_sync_t *msync, qd_iterator_t *
 }
 
 
-static void qcm_mobile_sync_on_mau_CT(qdrm_mobile_sync_t *msync, qd_iterator_t *body_iter)
+static void qcm_mobile_sync_on_mau_CT(qdrm_mobile_sync_t *msync, qd_parsed_field_t *body)
 {
-     qd_parsed_field_t *body = qd_parse(body_iter);
-
     if (!!body && qd_parse_is_map(body)) {
         qd_parsed_field_t *id_field         = qd_parse_value_by_key(body, ID);
         qd_parsed_field_t *mobile_seq_field = qd_parse_value_by_key(body, MOBILE_SEQ);
@@ -435,6 +439,11 @@ static void qcm_mobile_sync_on_mau_CT(qdrm_mobile_sync_t *msync, qd_iterator_t *
                 qd_log(msync->log, QD_LOG_ERROR, "Received malformed MAU from %s", router_id);
                 return;
             }
+
+            //
+            // Record the new mobile sequence for the remote router.
+            //
+            router->mobile_seq = mobile_seq;
 
             //
             // Check the exist/add list size against the hints-list size.  If they are not
@@ -598,23 +607,25 @@ static void qcm_mobile_sync_on_message_CT(void         *context,
                                           int           unused_inter_router_cost,
                                           uint64_t      unused_conn_id)
 {
-    qdrm_mobile_sync_t *msync     = (qdrm_mobile_sync_t*) context;
-    qd_iterator_t      *ap_iter   = qd_message_field_iterator(msg, QD_FIELD_APPLICATION_PROPERTIES);
-    qd_iterator_t      *body_iter = qd_message_field_iterator(msg, QD_FIELD_BODY);
-    qd_parsed_field_t  *ap_field  = qd_parse(ap_iter);
+    qdrm_mobile_sync_t *msync      = (qdrm_mobile_sync_t*) context;
+    qd_iterator_t      *ap_iter    = qd_message_field_iterator(msg, QD_FIELD_APPLICATION_PROPERTIES);
+    qd_iterator_t      *body_iter  = qd_message_field_iterator(msg, QD_FIELD_BODY);
+    qd_parsed_field_t  *ap_field   = qd_parse(ap_iter);
+    qd_parsed_field_t  *body_field = qd_parse(body_iter);
 
     if (!!ap_field && qd_parse_is_map(ap_field)) {
         qd_parsed_field_t *opcode_field = qd_parse_value_by_key(ap_field, OPCODE);
 
         if (qd_iterator_equal(qd_parse_raw(opcode_field), (const unsigned char*) MAR))
-            qcm_mobile_sync_on_mar_CT(msync, body_iter);
+            qcm_mobile_sync_on_mar_CT(msync, body_field);
 
         if (qd_iterator_equal(qd_parse_raw(opcode_field), (const unsigned char*) MAU))
-            qcm_mobile_sync_on_mau_CT(msync, body_iter);
+            qcm_mobile_sync_on_mau_CT(msync, body_field);
     }
 
     qd_parse_free(ap_field);
     qd_iterator_free(ap_iter);
+    qd_parse_free(body_field);
     qd_iterator_free(body_iter);
 }
 
@@ -713,6 +724,7 @@ static void qcm_mobile_sync_on_router_advanced_CT(qdrm_mobile_sync_t *msync, qdr
     // Send the control message.  Set the exclude_inprocess and control flags.
     //
     int fanout = qdr_forward_message_CT(msync->core, router->owning_addr, mar, 0, true, true);
+    qd_message_free(mar);
 
     //
     // Trace log the activity of this sequence update.
