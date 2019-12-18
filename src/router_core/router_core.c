@@ -205,7 +205,6 @@ void qdr_core_free(qdr_core_t *core)
 
     qdr_modules_finalize(core);
 
-    if (core->query_lock)                sys_mutex_free(core->query_lock);
     if (core->routers_by_mask_bit)       free(core->routers_by_mask_bit);
     if (core->control_links_by_mask_bit) free(core->control_links_by_mask_bit);
     if (core->data_links_by_mask_bit)    free(core->data_links_by_mask_bit);

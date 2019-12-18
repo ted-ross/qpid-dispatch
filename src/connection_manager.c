@@ -921,6 +921,12 @@ void qd_connection_manager_free(qd_connection_manager_t *cm)
     qd_listener_t *li = DEQ_HEAD(cm->listeners);
     while (li) {
         DEQ_REMOVE_HEAD(cm->listeners);
+
+        //
+        // Dec-ref the listener two times because during shutdown, the proactor will not have
+        // the opportunity to invoke PN_LISTENER_CLOSE and the listeners would otherwise leak.
+        //
+        qd_listener_decref(li);
         qd_listener_decref(li);
         li = DEQ_HEAD(cm->listeners);
     }

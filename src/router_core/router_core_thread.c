@@ -211,6 +211,8 @@ void *router_core_thread(void *arg)
         }
     }
 
+    qdr_agent_teardown_CT(core);
+
     qd_log(core->log, QD_LOG_INFO, "Router Core thread exited");
     return 0;
 }

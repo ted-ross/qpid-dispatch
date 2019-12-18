@@ -910,6 +910,7 @@ uint64_t qdr_identifier(qdr_core_t* core);
 void qdr_management_agent_on_message(void *context, qd_message_t *msg, int link_id, int cost, uint64_t in_conn_id);
 void  qdr_route_table_setup_CT(qdr_core_t *core);
 void  qdr_agent_setup_CT(qdr_core_t *core);
+void  qdr_agent_teardown_CT(qdr_core_t *core);
 void  qdr_forwarder_setup_CT(qdr_core_t *core);
 qdr_action_t *qdr_action(qdr_action_handler_t action_handler, const char *label);
 void qdr_action_enqueue(qdr_core_t *core, qdr_action_t *action);

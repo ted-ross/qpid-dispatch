@@ -342,6 +342,13 @@ void qdr_agent_setup_CT(qdr_core_t *core)
 }
 
 
+void qdr_agent_teardown_CT(qdr_core_t *core)
+{
+    sys_mutex_free(core->query_lock);
+    qd_timer_free(core->agent_timer);
+}
+
+
 static void qdr_agent_forbidden(qdr_core_t *core, qdr_query_t *query, bool op_query)
 {
     query->status = QD_AMQP_FORBIDDEN;
