@@ -99,7 +99,7 @@ qd_dispatch_t *qd_dispatch(const char *python_pkgdir, bool test_hooks)
 
     qd_dispatch_set_router_area(qd, strdup("0"));
     qd_dispatch_set_router_id(qd, strdup("0"));
-    qd->router_mode = QD_ROUTER_MODE_ENDPOINT;
+    qd->router_mode = QD_ROUTER_MODE_EDGE;
     qd->default_treatment   = QD_TREATMENT_LINK_BALANCED;
     qd->test_hooks          = test_hooks;
 
@@ -200,7 +200,6 @@ qd_error_t qd_dispatch_configure_router(qd_dispatch_t *qd, qd_entity_t *entity)
         case QD_ROUTER_MODE_STANDALONE: mode = "Standalone_"; break;
         case QD_ROUTER_MODE_INTERIOR:   mode = "Interior_";   break;
         case QD_ROUTER_MODE_EDGE:       mode = "Edge_";       break;
-        case QD_ROUTER_MODE_ENDPOINT:   mode = "Endpoint_";   break;
         }
         
         qd->router_id = (char*) malloc(strlen(mode) + QD_DISCRIMINATOR_SIZE + 2);
