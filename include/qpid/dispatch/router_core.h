@@ -43,8 +43,7 @@ typedef struct qdr_connection_info_t qdr_connection_info_t;
 typedef enum {
     QD_ROUTER_MODE_STANDALONE,  ///< Standalone router.  No routing protocol participation
     QD_ROUTER_MODE_INTERIOR,    ///< Interior router.  Full participation in routing protocol.
-    QD_ROUTER_MODE_EDGE,        ///< Edge router.  No transit-router capability.
-    QD_ROUTER_MODE_ENDPOINT     ///< No routing except for internal modules (agent, etc.).
+    QD_ROUTER_MODE_EDGE         ///< Edge router.  No transit-router capability.
 } qd_router_mode_t;
 ENUM_DECLARE(qd_router_mode);
 
