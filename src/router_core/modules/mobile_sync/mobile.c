@@ -93,6 +93,8 @@ static qd_address_treatment_t qcm_mobile_sync_default_treatment(qdr_core_t *core
         return QD_TREATMENT_LINK_BALANCED;
     case QD_TREATMENT_UNAVAILABLE:
         return QD_TREATMENT_UNAVAILABLE;
+    case QD_TREATMENT_LVMULTICAST:
+        return QD_TREATMENT_LVMULTICAST;
     default:
         return core->qd->default_treatment == QD_TREATMENT_UNAVAILABLE ? QD_TREATMENT_ANYCAST_BALANCED : core->qd->default_treatment;
     }

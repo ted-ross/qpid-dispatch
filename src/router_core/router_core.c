@@ -121,7 +121,7 @@ void qdr_core_free(qdr_core_t *core)
     sys_mutex_free(core->id_lock);
     qd_timer_free(core->work_timer);
 
-    for (int i = 0; i <= QD_TREATMENT_LINK_BALANCED; ++i) {
+    for (int i = 0; i < QD_TREATMENT_UNAVAILABLE; ++i) {
         if (core->forwarders[i]) {
             free(core->forwarders[i]);
         }
@@ -433,7 +433,9 @@ bool qdr_address_is_mobile_CT(qdr_address_t *addr)
 bool qdr_is_addr_treatment_multicast(qdr_address_t *addr)
 {
     if (addr) {
-        if (addr->treatment == QD_TREATMENT_MULTICAST_FLOOD || addr->treatment == QD_TREATMENT_MULTICAST_ONCE)
+        if (addr->treatment == QD_TREATMENT_MULTICAST_FLOOD
+            || addr->treatment == QD_TREATMENT_MULTICAST_ONCE
+            || addr->treatment == QD_TREATMENT_LVMULTICAST)
             return true;
     }
     return false;
@@ -528,6 +530,9 @@ void qdr_core_remove_address(qdr_core_t *core, qdr_address_t *addr)
         cr = DEQ_HEAD(addr->conns);
     }
 
+    if (addr->last_msg)
+        qd_message_free(addr->last_msg);
+
     //
     // If there are any fallback-related linkages, disconnect them.
     //
@@ -542,6 +547,15 @@ void qdr_core_remove_address(qdr_core_t *core, qdr_address_t *addr)
 }
 
 
+void qdr_core_send_last_message_CT(qdr_core_t *core, qdr_address_t *addr, qdr_link_t *link)
+{
+    if (addr->last_msg) {
+        qdr_delivery_t *out_delivery = qdr_forward_new_delivery_CT(core, 0, link, addr->last_msg);
+        qdr_forward_deliver_CT(core, link, out_delivery);
+    }
+}
+
+
 void qdr_core_bind_address_link_CT(qdr_core_t *core, qdr_address_t *addr, qdr_link_t *link)
 {
     const char *key = (const char*) qd_hash_key_by_handle(addr->hash_handle);
@@ -551,6 +565,7 @@ void qdr_core_bind_address_link_CT(qdr_core_t *core, qdr_address_t *addr, qdr_li
 
     if (link->link_direction == QD_OUTGOING) {
         qdr_add_link_ref(&addr->rlinks, link, QDR_LINK_LIST_CLASS_ADDRESS);
+        qdr_core_send_last_message_CT(core, addr, link);
         if (DEQ_SIZE(addr->rlinks) == 1) {
             qdr_addr_start_inlinks_CT(core, addr);
             qdrc_event_addr_raise(core, QDRC_EVENT_ADDR_BECAME_LOCAL_DEST, addr);

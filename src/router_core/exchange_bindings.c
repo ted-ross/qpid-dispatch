@@ -917,7 +917,8 @@ static qdr_exchange_t *qdr_exchange(qdr_core_t *core,
         qdr_forwarder_t *old = ex->qdr_addr->forwarder;
         qdr_forwarder_t *new = qdr_new_forwarder(qdr_forward_exchange_CT,
                                                  old ? old->forward_attach : 0,
-                                                 old ? old->bypass_valid_origins: false);
+                                                 old ? old->bypass_valid_origins : false,
+                                                 old ? old->last_value : false);
         ex->old_forwarder = old;
         ex->qdr_addr->forwarder = new;
         ex->qdr_addr->ref_count += 1;

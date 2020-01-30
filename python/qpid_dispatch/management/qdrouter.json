@@ -1179,7 +1179,7 @@
                     "required": false
                 },
                 "distribution": {
-                    "type": ["multicast", "closest", "balanced", "unavailable"],
+                    "type": ["multicast", "lvmulticast", "closest", "balanced", "unavailable"],
                     "description": "Treatment of traffic associated with the address",
                     "create": true,
                     "required": false,
@@ -1580,8 +1580,8 @@
             "extends": "operationalEntity",
             "attributes": {
                 "distribution": {
-                    "type": ["flood", "multicast", "closest", "balanced", "linkBalanced", "unavailable"],
-                    "description": "Forwarding treatment for the address: flood - messages delivered to all subscribers along all available paths (this will cause duplicate deliveries if there are redundant paths); multicast - one copy of each message delivered to all subscribers; closest - messages delivered to only the closest subscriber; balanced - messages delivered to one subscriber with load balanced across subscribers; linkBalanced - for link-routing, link attaches balanced across destinations; unavailable - this address is unavailable, link attaches to an address of unavailable distribution will be rejected."
+                    "type": ["flood", "multicast", "lvmulticast", "closest", "balanced", "linkBalanced", "unavailable"],
+                    "description": "Forwarding treatment for the address: flood - messages delivered to all subscribers along all available paths (this will cause duplicate deliveries if there are redundant paths); multicast - one copy of each message delivered to all subscribers; lvmulticast - same as multicast but the last message is sent automatically to new subscribers; closest - messages delivered to only the closest subscriber; balanced - messages delivered to one subscriber with load balanced across subscribers; linkBalanced - for link-routing, link attaches balanced across destinations; unavailable - this address is unavailable, link attaches to an address of unavailable distribution will be rejected."
                 },
                 "inProcess": {
                     "type": "integer",

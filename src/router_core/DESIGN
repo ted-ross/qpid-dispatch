@@ -199,6 +199,11 @@ Forwarding Treatment
         concert with the ingress-router message annotation to prevent deliveries from
         being delivered multiply.
 
+    LVMULTICAST
+
+        Messages are delivered as in MULTICAST_ONCE treatment except that new subscribers
+        are automatically delivered the most recent message to the address.
+
     ANYCAST_CLOSEST
 
         Messages are delivered to one subscriber.  The chosen subscriber is the one

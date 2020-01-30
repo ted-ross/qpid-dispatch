@@ -20,6 +20,7 @@
 #include "router_core_private.h"
 #include "exchange_bindings.h"
 #include "delivery.h"
+#include "forwarder.h"
 #include <qpid/dispatch/amqp.h>
 #include <stdio.h>
 #include <inttypes.h>
@@ -419,7 +420,8 @@ static long qdr_addr_path_count_CT(qdr_address_t *addr)
 
 static void qdr_link_forward_CT(qdr_core_t *core, qdr_link_t *link, qdr_delivery_t *dlv, qdr_address_t *addr, bool more)
 {
-    qdr_link_t *dlv_link = qdr_delivery_link(dlv);
+    qdr_link_t *dlv_link   = qdr_delivery_link(dlv);
+    bool        last_value = !!addr && !!addr->forwarder && addr->forwarder->last_value;
 
     assert(dlv_link == link);
 
@@ -432,7 +434,8 @@ static void qdr_link_forward_CT(qdr_core_t *core, qdr_link_t *link, qdr_delivery
     if (addr
         && addr == link->owning_addr
         && qdr_addr_path_count_CT(addr) == 0
-        && (link->fallback || qdr_addr_path_count_CT(addr->fallback) == 0)) {
+        && (link->fallback || qdr_addr_path_count_CT(addr->fallback) == 0)
+        && !last_value) {
         //
         // We are trying to forward a delivery on an address that has no outbound paths
         // AND the incoming link is targeted (not anonymous).
@@ -575,9 +578,12 @@ static void qdr_link_forward_CT(qdr_core_t *core, qdr_link_t *link, qdr_delivery
         //
         // If the delivery is not settled, release it.
         //
-        if (!dlv->settled)
-            qdr_delivery_release_CT(core, dlv);
-        else {
+        if (!dlv->settled) {
+            if (last_value)
+                qdr_delivery_accept_CT(core, dlv);
+            else
+                qdr_delivery_release_CT(core, dlv);
+        } else {
             link->dropped_presettled_deliveries++;
             if (dlv_link->link_type == QD_LINK_ENDPOINT)
                 core->dropped_presettled_deliveries++;

@@ -355,6 +355,7 @@ int qdr_forward_multicast_CT(qdr_core_t      *core,
                              bool             control)
 {
     bool          bypass_valid_origins = addr->forwarder->bypass_valid_origins;
+    bool          last_value           = addr->forwarder->last_value;
     int           fanout               = 0;
     qd_bitmask_t *link_exclusion       = !!in_delivery ? in_delivery->link_exclusion : 0;
     bool          receive_complete     = qd_message_receive_complete(qdr_delivery_message(in_delivery));
@@ -362,6 +363,15 @@ int qdr_forward_multicast_CT(qdr_core_t      *core,
 
     qdr_forward_deliver_info_list_t deliver_info_list;
     DEQ_INIT(deliver_info_list);
+
+    //
+    // Handle last-value behavior if appropriate
+    //
+    if (last_value) {
+        if (addr->last_msg)
+            qd_message_free(addr->last_msg);
+        addr->last_msg = qd_message_copy(msg);
+    }
 
     //
     // Forward to local subscribers
@@ -945,13 +955,14 @@ void qdr_forward_link_direct_CT(qdr_core_t       *core,
 // In-Thread API Functions
 //==================================================================================
 
-qdr_forwarder_t *qdr_new_forwarder(qdr_forward_message_t fm, qdr_forward_attach_t fa, bool bypass_valid_origins)
+qdr_forwarder_t *qdr_new_forwarder(qdr_forward_message_t fm, qdr_forward_attach_t fa, bool bypass_valid_origins, bool last_value)
 {
     qdr_forwarder_t *forw = NEW(qdr_forwarder_t);
 
     forw->forward_message      = fm ? fm : qdr_forward_message_null_CT;
     forw->forward_attach       = fa ? fa : qdr_forward_attach_null_CT;
     forw->bypass_valid_origins = bypass_valid_origins;
+    forw->last_value           = last_value;
 
     return forw;
 }
@@ -962,21 +973,22 @@ void qdr_forwarder_setup_CT(qdr_core_t *core)
     //
     // Create message forwarders
     //
-    core->forwarders[QD_TREATMENT_MULTICAST_FLOOD]  = qdr_new_forwarder(qdr_forward_multicast_CT, 0, true);
-    core->forwarders[QD_TREATMENT_MULTICAST_ONCE]   = qdr_new_forwarder(qdr_forward_multicast_CT, 0, false);
-    core->forwarders[QD_TREATMENT_ANYCAST_CLOSEST]  = qdr_new_forwarder(qdr_forward_closest_CT,   0, false);
-    core->forwarders[QD_TREATMENT_ANYCAST_BALANCED] = qdr_new_forwarder(qdr_forward_balanced_CT,  0, false);
+    core->forwarders[QD_TREATMENT_MULTICAST_FLOOD]  = qdr_new_forwarder(qdr_forward_multicast_CT, 0, true, false);
+    core->forwarders[QD_TREATMENT_MULTICAST_ONCE]   = qdr_new_forwarder(qdr_forward_multicast_CT, 0, false, false);
+    core->forwarders[QD_TREATMENT_LVMULTICAST]      = qdr_new_forwarder(qdr_forward_multicast_CT, 0, false, true);
+    core->forwarders[QD_TREATMENT_ANYCAST_CLOSEST]  = qdr_new_forwarder(qdr_forward_closest_CT,   0, false, false);
+    core->forwarders[QD_TREATMENT_ANYCAST_BALANCED] = qdr_new_forwarder(qdr_forward_balanced_CT,  0, false, false);
 
     //
     // Create link forwarders
     //
-    core->forwarders[QD_TREATMENT_LINK_BALANCED] = qdr_new_forwarder(0, qdr_forward_link_balanced_CT, false);
+    core->forwarders[QD_TREATMENT_LINK_BALANCED] = qdr_new_forwarder(0, qdr_forward_link_balanced_CT, false, false);
 }
 
 
 qdr_forwarder_t *qdr_forwarder_CT(qdr_core_t *core, qd_address_treatment_t treatment)
 {
-    if (treatment <= QD_TREATMENT_LINK_BALANCED)
+    if (treatment < QD_TREATMENT_UNAVAILABLE)
         return core->forwarders[treatment];
     return 0;
 }

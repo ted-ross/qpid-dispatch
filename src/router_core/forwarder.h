@@ -42,7 +42,8 @@ struct qdr_forwarder_t {
     qdr_forward_message_t forward_message;
     qdr_forward_attach_t  forward_attach;
     bool                  bypass_valid_origins;
+    bool                  last_value;
 };
 
-qdr_forwarder_t *qdr_new_forwarder(qdr_forward_message_t fm, qdr_forward_attach_t fa, bool bypass_valid_origins);
+qdr_forwarder_t *qdr_new_forwarder(qdr_forward_message_t fm, qdr_forward_attach_t fa, bool bypass_valid_origins, bool last_value);
 #endif

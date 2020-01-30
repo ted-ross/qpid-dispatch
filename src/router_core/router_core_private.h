@@ -557,6 +557,11 @@ struct qdr_address_t {
     int *outstanding_deliveries;
 
     //
+    // State for "last-value-multicast" treatment
+    //
+    qd_message_t *last_msg;
+
+    //
     // State for "exchange" treatment
     //
     qdr_exchange_t *exchange;  // weak ref
@@ -873,7 +878,7 @@ struct qdr_core_t {
     sys_mutex_t          *id_lock;
 
     qdr_exchange_list_t   exchanges;
-    qdr_forwarder_t      *forwarders[QD_TREATMENT_LINK_BALANCED + 1];
+    qdr_forwarder_t      *forwarders[QD_TREATMENT_UNAVAILABLE + 1];
 
     qdr_delivery_cleanup_list_t  delivery_cleanup_list;  ///< List of delivery cleanup items to be processed in an IO thread
 

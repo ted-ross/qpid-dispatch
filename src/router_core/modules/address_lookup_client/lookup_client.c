@@ -22,6 +22,7 @@
 #include "router_core_private.h"
 #include "core_events.h"
 #include "core_client_api.h"
+#include "forwarder.h"
 #include <qpid/dispatch/ctools.h>
 #include <qpid/dispatch/discriminator.h>
 #include <qpid/dispatch/address_lookup_server.h>
@@ -404,6 +405,7 @@ static void qdr_link_react_to_first_attach_CT(qdr_core_t       *core,
             && (DEQ_SIZE(addr->subscriptions)
                 || DEQ_SIZE(addr->rlinks)
                 || qd_bitmask_cardinality(addr->rnodes)
+                || (!!addr->forwarder && addr->forwarder->last_value)
                 || !!addr->exchange
                 || (!!addr->fallback
                     && (DEQ_SIZE(addr->fallback->subscriptions)

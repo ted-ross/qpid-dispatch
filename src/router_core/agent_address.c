@@ -94,6 +94,7 @@ static void qdr_insert_address_columns_CT(qdr_core_t          *core,
             case QD_TREATMENT_ANYCAST_BALANCED: qd_compose_insert_string(body, "balanced");     break;
             case QD_TREATMENT_LINK_BALANCED:    qd_compose_insert_string(body, "linkBalanced"); break;
             case QD_TREATMENT_UNAVAILABLE:      qd_compose_insert_string(body, "unavailable");  break;
+            case QD_TREATMENT_LVMULTICAST:      qd_compose_insert_string(body, "lvmulticast");  break;
         }
         break;
     }
