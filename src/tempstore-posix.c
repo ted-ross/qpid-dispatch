@@ -148,7 +148,12 @@ static bool qdts_write_file(qdts_state_t *state, const char *filename, const cha
 
     int fd = open(full_path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
     if (fd > 0) {
-        write(fd, body, strlen(body));
+        ssize_t written = write(fd, body, strlen(body));
+        if (written < 0) {
+            qd_log(state->log, QD_LOG_ERROR, "Failed to write file '%s' (%s)", full_path, strerror(errno));
+            free(full_path);
+            return true;
+        }
         close(fd);
     } else {
         qd_log(state->log, QD_LOG_ERROR, "Failed to open file '%s' (%s)", full_path, strerror(errno));
@@ -223,6 +228,7 @@ static uint64_t qdts_on_message(void *context, qd_message_t *msg, int link_maskb
             if (length > policy_spec->maxTempFileSize) {
                 qd_log(state->log, QD_LOG_ERROR, "[C%"PRIu64"] Policy violation - temp file larger than max size: %d", conn_id, length);
                 free(filename);
+                qd_iterator_free(body_iter);
                 *error = qdr_error(QD_AMQP_COND_UNAUTHORIZED_ACCESS, "File larger than maximum allowed size");
                 return PN_REJECTED;
             }
