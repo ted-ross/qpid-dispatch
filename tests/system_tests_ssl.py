@@ -27,7 +27,7 @@ import re
 import time
 from subprocess import Popen, PIPE
 from qpid_dispatch.management.client import Node
-from system_test import TestCase, main_module, Qdrouterd, DIR, SkipIfNeeded
+from system_test import TestCase, main_module, Qdrouterd, QdManager, DIR, SkipIfNeeded
 from system_test import unittest
 from proton import SASL, Url, SSLDomain, SSLUnavailable, Message
 from proton.utils import BlockingConnection
@@ -598,16 +598,17 @@ class RouterTestSslClient(RouterTestSslBase):
         Expects all supported versions: TLSv1, TLSv1.1, TLSv1.2 and TLSv1.3 to be allowed
         Uses a live-created listener and profile with injected certificate files.
         """
-        self.inject_file("ca-certificate.pem",     "live-ca.pem")
-        self.inject_file("server-certificate.pem", "live-server.pem")
-        self.inject_file("server-private-key.pem", "live-key.pem")
+        self.inject_file("ca-certificate.pem",       "live-ca.pem")
+        self.inject_file("server-certificate.pem",   "live-server.pem")
+        self.inject_file("server-private-key.pem",   "live-key.pem")
+        self.inject_file("server-password-file.txt", "live-password.txt")
         self.create_ssl_profile('ssl-profile-live',
-                                {'caCertFile': 'live-ca.pem',
-                                 'certFile': 'live-server.pem',
-                                 'privateKeyFile': 'live-key.pem',
+                                {'caCertFile': 'tmp:live-ca.pem',
+                                 'certFile': 'tmp:live-server.pem',
+                                 'privateKeyFile': 'tmp:live-key.pem',
                                  'ciphers': 'ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:' \
                                  'DH+AES:RSA+AESGCM:RSA+AES:!aNULL:!MD5:!DSS',
-                                 'password': 'server-password'})
+                                 'password': 'tmp:live-password.txt'})
         self.create_listener('0.0.0.0/%s' % self.PORT_TLS_LIVE,
                              {'host': '0.0.0.0', 'role': 'normal', 'port': self.PORT_TLS_LIVE,
                               'authenticatePeer': 'no', 'sslProfile': 'ssl-profile-live'})

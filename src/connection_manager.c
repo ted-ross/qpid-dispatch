@@ -161,8 +161,8 @@ static qd_config_sasl_plugin_t *qd_find_sasl_plugin(qd_connection_manager_t *cm,
 /**
  * qdcm_normalize_filename
  *
- * If the infile (file name) is absolute or null, simply pass it through.  If it is 
- * relative (contains no slashes or ".."), check to see if the file is in the temporary
+ * If the infile (file name) is null or doesn't start with "tmp:", simply pass it through.
+ * If it starts with "tmp:", check to see if the file (without the "tmp:") is in the temporary
  * store.  If it is, return the full path to the location of the file in the temporary
  * store.
  *
@@ -172,22 +172,24 @@ static qd_config_sasl_plugin_t *qd_find_sasl_plugin(qd_connection_manager_t *cm,
  */
 static char* qdcm_normalize_filename(char* infile)
 {
-    if (!infile || *infile == '/' || *infile == '\\')
+    if (!infile || strstr(infile, "tmp:") != infile)
         return infile;
 
     if (!!strchr(infile, '/') || !!strchr(infile, '\\') || !!strstr(infile, "..")) {
-        qd_error(QD_ERROR_CONFIG, "Relative filename '%s' contains '/', '\\', or '..'", infile);
-        return infile;
+        qd_error(QD_ERROR_CONFIG, "Temp filename '%s' contains '/', '\\', or '..'", infile);
+        free(infile);
+        return 0;
     }
 
     if (!qd_temp_is_store_created()) {
-        qd_error(QD_ERROR_CONFIG, "Relative filename '%s' provided, but the temp store has not been created", infile);
-        return infile;
+        qd_error(QD_ERROR_CONFIG, "Temp filename '%s' provided, but the temp store has not been created", infile);
+        free(infile);
+        return 0;
     }
 
-    char *new_path = qd_temp_get_path(infile);
+    char *new_path = qd_temp_get_path(infile + 4);
     if (!new_path) {
-        qd_error(QD_ERROR_CONFIG, "Relative filename '%s' not found in the temp store", infile);
+        qd_error(QD_ERROR_CONFIG, "Temp filename '%s' not found in the temp store", infile);
     }
 
     free(infile);
@@ -344,12 +346,19 @@ static void qd_config_process_password(char **actual_val, char *pw, bool *is_fil
         *actual_val = copy;
         *is_file = true;
     }
+    //
+    // If the password starts with tmp:, get the file from the temporary store.
+    //
+    else if (strncmp(pw, "tmp:", 4) == 0) {
+        char *copy = strdup(pw);
+        *actual_val = qdcm_normalize_filename(copy);
+        *is_file    = true;
+    }
     else {
         //
-        // THe password field does not have any prefixes. Use it as plain text
+        // The password field does not have any prefixes. Use it as plain text
         //
         qd_log(log_source, QD_LOG_WARNING, "It is unsafe to provide plain text passwords in the config file");
-
     }
 }
 
@@ -447,10 +456,9 @@ static qd_error_t load_server_config(qd_dispatch_t *qd, qd_server_config_t *conf
         //
         char *actual_pass = 0;
         bool is_file_path = 0;
-        qd_config_process_password(&actual_pass, config->sasl_password, &is_file_path, false, qd->connection_manager->log_source);
+        qd_config_process_password(&actual_pass, config->sasl_password, &is_file_path, false, qd->connection_manager->log_source); CHECK();
         if (actual_pass) {
             if (is_file_path) {
-                actual_pass = qdcm_normalize_filename(actual_pass);
                 qd_set_password_from_file(actual_pass, &config->sasl_password, qd->connection_manager->log_source);
                 free(actual_pass);
             }
@@ -653,7 +661,6 @@ qd_config_ssl_profile_t *qd_dispatch_configure_ssl_profile(qd_dispatch_t *qd, qd
         qd_config_process_password(&actual_pass, ssl_profile->ssl_password, &is_file_path, true, cm->log_source); CHECK();
         if (actual_pass) {
             if (is_file_path) {
-                actual_pass = qdcm_normalize_filename(actual_pass);
                 qd_set_password_from_file(actual_pass, &ssl_profile->ssl_password, cm->log_source);
                 free(actual_pass);
             }
